@@ -1,0 +1,39 @@
+<?php
+// $Id: uc_credomatic.install,v 1.1 2011/02/03 16:16:16 longwave Exp $
+
+/**
+ * Implementation of hook_requirements().
+ */
+function uc_credomatic_requirements() {
+  $requirements = array();
+  $t = get_t();
+
+  if (!function_exists('mcrypt_decrypt')) {
+    $requirements['mcrypt'] = array(
+      'title' => $t('PHP mcrypt extension'),
+      'description' => $t('The uc_credomatic module requires the PHP mcrypt extension.'),
+      'severity' => REQUIREMENT_ERROR,
+    );
+  }
+
+  if (!function_exists('hash_hmac')) {
+    $requirements['hash'] = array(
+      'title' => $t('PHP hash extension'),
+      'description' => $t('The uc_credomatic module requires the PHP hash extension.'),
+      'severity' => REQUIREMENT_ERROR,
+    );
+  }
+
+  return $requirements;
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function uc_credomatic_uninstall() {
+  variable_del('uc_credomatic_storefrontid');
+  variable_del('uc_credomatic_cpihashkey');
+  variable_del('uc_credomatic_url');
+  variable_del('uc_credomatic_transactiontype');
+  variable_del('uc_credomatic_productionmode');
+}

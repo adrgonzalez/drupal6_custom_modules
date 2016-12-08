@@ -1,0 +1,5 @@
+name = "Filtro de proveedores activos"
+description = "FILTER PARA MOSTRAR SOLO LOS PRODUCTOS CON PROVEEDORES ACTIVOS"
+core = 6.x
+package = Proveedores
+dependencies[] = user

@@ -1,0 +1,6 @@
+name = "Create node via ftp"
+description = "Crear un nodo automaticamente con los archivos en la carpeta del servidor de archivos"
+package = Proveedores
+dependencies[] = proveedor
+version = "6.x-1.0"
+core = "6.x"

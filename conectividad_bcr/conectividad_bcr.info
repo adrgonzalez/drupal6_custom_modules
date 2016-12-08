@@ -1,0 +1,5 @@
+name = conectividad_bcr Server
+description = Conectividad del BCR mediante XMLRPC.
+package = Conectividad
+dependencies[] = conectividad_compra_paquetes
+core = 6.x

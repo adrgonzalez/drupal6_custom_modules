@@ -1,0 +1,9 @@
+name = UC Product Preciopoints
+description = It enables to shows products store points as a field
+package = "Ubercart - Userpoints"
+version = "6.x-1.0"
+core = "6.x"
+dependencies[] = uc_product
+dependencies[] = userpoints
+dependencies[] = ds
+dependencies[] = nd

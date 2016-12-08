@@ -1,0 +1,99 @@
+<?php
+
+function uc_product_preciopoints_theme() {
+    return array(
+        'uc_product_preciopoints' => array(
+            'arguments' => array('preciopoints' => '', 'teaser' => 0, 'page' => 0),
+        ),
+        'uc_product_ganapoints' => array(
+            'arguments' => array('ganapoints' => '', 'teaser' => 0, 'page' => 0),
+        ),
+    );
+}
+
+/**
+ * Implementation of hook_view().
+ */
+function uc_product_preciopoints_nodeapi(&$node, $op, $teaser, $page) {
+    //global $user;
+    switch ($op) {
+        case 'view':
+            if (uc_product_is_product($node)) {
+                /** Modificación Adrian 15/12/10
+                 * Esta modificación despliega el precio del producto en puntos virtuales
+                 */
+                $userpoints_ubercart_payment = db_result(db_query("SELECT value FROM {variable} WHERE name='userpoints_ubercart_payment'"));
+
+                //s:5:"18.66";
+                $precio_puntos = split('"', $userpoints_ubercart_payment);
+                $titi_pts_valor = $precio_puntos[1];
+                $precio_points = $node->sell_price * $titi_pts_valor;
+                if ($precio_points == '') {
+                    $precio_points = 0;
+                }
+                $product_preciopoints = $precio_points;
+                $node->content['preciopoints']['#value'] = theme('uc_product_preciopoints', $product_preciopoints, $teaser, $page);
+                $node->content['preciopoints']['#weight'] = 9;
+                $node->content['preciopoints']['#access'] = 0;
+
+                $puntos_ganar = db_result(db_query('SELECT points FROM {uc_userpoints_products} WHERE nid=%d', $node->nid));
+                if ($puntos_ganar == '') {
+                    $puntos_ganar = 0;
+                }
+                $node->content['ganapoints']['#value'] = theme('uc_product_ganapoints', $puntos_ganar, $teaser, $page);
+                $node->content['ganapoints']['#weight'] = 9;
+                $node->content['ganapoints']['#access'] = 0;
+
+                /** Fin de la modificación */
+            }
+            break;
+    }
+}
+
+function theme_uc_product_preciopoints($preciopoints, $teaser = 0, $page = 0) {
+    $output = '<span class="precio-titipts">';
+    $output .= $preciopoints;
+    $output .='</span>';
+    return $output;
+}
+
+function theme_uc_product_ganapoints($ganapoints, $teaser = 0, $page = 0) {
+    $output = '<div class="product-ganapoints">';
+    $output .= $ganapoints;
+    $output .='</div>';
+    return $output;
+}
+
+/**
+ * Implementation of hook_views_api().
+ */
+function uc_product_preciopoints_views_api() {
+    return array(
+            'api' => '2.0',
+            'path' => drupal_get_path('module', 'uc_product_preciopoints') .'/views',
+    );
+}
+
+/**
+ * Implementation of hook_ds_fields().
+ */
+function uc_product_preciopoints_ds_fields($type_name, $build_mode, $extra) {
+    $fields = array();
+    $fields['nd_uc_product_preciopoints'] = array(
+        'title' => 'UC Product Preciopoints',
+        'type' => DS_FIELD_TYPE_FUNCTION,
+        'status' => DS_FIELD_STATUS_STATIC,
+        'properties' => array(
+            'formatters' => array(
+                '_uc_product_preciopoints_default' => t('Default'),
+            ),
+        )
+    );
+    return array('nd' => $fields);
+}
+
+function _uc_product_preciopoints_default($field) {
+    return $field['object']->content['preciopoints']['#value'];
+}
+
+?>

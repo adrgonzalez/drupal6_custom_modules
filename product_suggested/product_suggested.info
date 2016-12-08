@@ -1,0 +1,4 @@
+name = "Productos Sugeridos"
+description = "Agrega un filtro en los views para los productos sugeridos"
+core = 6.x
+package = Filtros

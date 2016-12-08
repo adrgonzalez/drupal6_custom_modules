@@ -1,0 +1,206 @@
+<?php
+// $Id: uc_credomatic.module,v 1.2 2011/02/04 11:46:54 longwave Exp $
+
+/**
+ * Implementation of hook_menu().
+ */
+function uc_credomatic_menu() {
+  $items = array();
+
+  $items['cart/credomatic/callback'] = array(
+    'page callback' => 'uc_credomatic_callback',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+    'file' => 'uc_credomatic.pages.inc',
+  );
+  $items['cart/credomatic/complete'] = array(
+    'title' => 'Order complete',
+    'page callback' => 'uc_credomatic_complete',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+    'file' => 'uc_credomatic.pages.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Implementation of hook_form_alter().
+ */
+function uc_credomatic_form_uc_cart_checkout_review_form_alter(&$form, $form_state) {
+  if (($order_id = intval($_SESSION['cart_order'])) > 0) {
+    $order = uc_order_load($order_id);
+    if ($order->payment_method == 'credomatic') {
+      unset($form['submit']);
+      $form['#prefix'] = '<p>' . t('You will now be transferred to our Credomatic Secure ePayments service, where<br />you will be asked to enter your payment details in a series of screens.') . '</p>';
+      $form['#prefix'] .= '<table style="display: inline; padding-top: 1em;"><tr><td>';
+      $form['#suffix'] = '</td><td>'. drupal_get_form('uc_credomatic_form', $order) .'</td></tr></table>';
+    }
+  }
+}
+
+/**
+ * Credomatic checkout form.
+ */
+function uc_credomatic_form($form_state, $order) {
+  $data = array(
+    'CpiDirectResultUrl' => str_replace('http://', 'https://', url('cart/credomatic/callback', array('absolute' => TRUE))),
+    'CpiReturnUrl' => str_replace('http://', 'https://', url('cart/credomatic/complete', array('absolute' => TRUE))),
+    'Mode' => variable_get('uc_credomatic_productionmode', 'T'),
+    'OrderDesc' => t('Order @order_id', array('@order_id' => $order->order_id)),
+    'OrderId' => $order->order_id,
+    'PurchaseAmount' => round($order->order_total * 100),
+    'PurchaseCurrency' => _uc_credomatic_currency_code(variable_get('uc_currency_code', 'USD')),
+    'StorefrontId' => variable_get('uc_credomatic_storefrontid', ''),
+    'TimeStamp' => time() . '000',
+    'TransactionType' => variable_get('uc_credomatic_transactiontype', 'auth'),
+    'UserId' => $order->uid,
+
+    'BillingAddress1' => $order->billing_street1,
+    'BillingAddress2' => $order->billing_street2,
+    'BillingCity' => $order->billing_city,
+    'BillingCountry' => $order->billing_country ? $order->billing_country : 826,
+    'BillingCounty' => $order->billing_zone ? uc_zone_get_by_id($order->billing_zone) : '',
+    'BillingFirstName' => $order->billing_first_name,
+    'BillingLastName' => $order->billing_last_name,
+    'BillingPostal' => $order->billing_postal_code,
+    'ShopperEmail' => $order->primary_email,
+    'ShippingAddress1' => $order->delivery_street1,
+    'ShippingAddress2' => $order->delivery_street2,
+    'ShippingCity' => $order->delivery_city,
+    'ShippingCountry' => $order->delivery_country ? $order->delivery_country : 826,
+    'ShippingCounty' => $order->delivery_zone ? uc_zone_get_by_id($order->delivery_zone) : '',
+    'ShippingFirstName' => $order->delivery_first_name,
+    'ShippingLastName' => $order->delivery_last_name,
+    'ShippingPostal' => $order->delivery_postal_code,
+  );
+
+  // If the order is not shippable or the delivery checkout pane is disabled, send billing address as delivery address.
+  if (!uc_order_is_shippable($order) || !variable_get('uc_pane_delivery_enabled', TRUE)) {
+    foreach ($data as $key => $value) {
+      if (substr($key, 0, 7) == 'Billing') {
+        $transaction['Shipping' . substr($key, 7)] = $value;
+      }
+    }
+  }
+
+  // Calculate the secure hash from the above fields.
+  $data['OrderHash'] = uc_credomatic_generate_hash($data, variable_get('uc_credomatic_cpihashkey', ''));
+
+  // Create the form to send data to Credomatic.
+  $form['#action'] = variable_get('uc_credomatic_url', 'https://credomatic.compassmerchantsolutions.com/api/transact.php');
+
+  foreach ($data as $key => $value) {
+    $form[$key] = array('#type' => 'hidden', '#value' => $value);
+  }
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit order'),
+  );
+
+  return $form;
+}
+
+/**
+ * Implementation of hook_payment_method().
+ */
+function uc_credomatic_payment_method() {
+  $methods[] = array(
+    'id' => 'credomatic',
+    'name' => t('Credomatic Secure ePayments CPI'),
+    'title' => t('Credit or debit card (Credomatic Secure ePayments)'),
+    'review' => t('Credomatic Secure ePayments'),
+    'callback' => 'uc_payment_method_credomatic',
+    'weight' => 3,
+    'checkout' => TRUE,
+    'no_gateway' => TRUE,
+  );
+
+  return $methods;
+}
+
+/**
+ * Credomatic payment method callback.
+ */
+function uc_payment_method_credomatic($op, &$arg1) {
+  switch ($op) {
+    case 'settings':
+      $form['uc_credomatic_storefrontid'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Storefront ID'),
+        '#description' => t('This should be set to your unique storefront ID, a 13 character string supplied by Credomatic. Example: UK12345678CUR.'),
+        '#default_value' => variable_get('uc_credomatic_storefrontid', ''),
+        '#size' => 13,
+        '#maxlength' => 13,
+      );
+
+      $form['uc_credomatic_cpihashkey'] = array(
+        '#type' => 'textfield',
+        '#title' => t('CPI hash key'),
+        '#description' => t('The Credomatic CPI hash key (also known as the "shared secret") is sent in a letter to you after your CPI service is activated. This key is exactly 32 characters in length, case sensitive, and specific both to you and the associated CPI service. If you have more than one CPI service (e.g. multiple currencies) you will receive one CPI Hash Key for each CPI service. This must be kept confidential.'),
+        '#default_value' => variable_get('uc_credomatic_cpihashkey', ''),
+        '#size' => 32,
+        '#maxlength' => 32,
+      );
+
+      $form['uc_credomatic_url'] = array(
+        '#type' => 'textfield',
+        '#title' => t('CPI Post URL'),
+        '#default_value' => variable_get('uc_credomatic_url', 'https://credomatic.compassmerchantsolutions.com/api/transact.php'),
+        '#description' => t('URL of the secure payment page customers are sent to for payment processing. If unsure, use "@default".', array('@default' => 'https://credomatic.compassmerchantsolutions.com/api/transact.php')),
+      );
+
+      $form['uc_credomatic_transactiontype'] = array(
+        '#type' => 'radios',
+        '#title' => t('Transaction type'),
+        '#description' => t('Auth mode places a reserve on the card, the available balance remains unchanged. Once the goods have been shipped, you will use the Virtual Terminal to mark the order as "shipped" and mark the funds for settlement. (This corresponds to a "PreAuth" in the Virtual Terminal.)') . '<br />'. t('Capture mode automatically marks the funds ready for settlement. This is typically used for goods that do not need to be physically shipped. (This corresponds to an "Auth" in the Virtual Terminal.)'),
+        '#default_value' => variable_get('uc_credomatic_transactiontype', 'Auth'),
+        '#options' => array(
+          'Auth' => t('Auth'),
+          'Capture' => t('Capture'),
+        ),
+      );
+
+      $form['uc_credomatic_productionmode'] = array(
+        '#type' => 'radios',
+        '#title' => t('Transaction mode'),
+        '#default_value' => variable_get('uc_credomatic_productionmode', 'T'),
+        '#options' => array(
+          'T' => t('Test (no money will be taken)'),
+          'P' => t('Production (customer cards will be charged)'),
+        ),
+      );
+
+      return $form;
+  }
+}
+
+/**
+ * Generate an Credomatic order hash.
+ */
+function uc_credomatic_generate_hash($data, $secret) {
+  // Array keys are ignored, so Credomatic sorts the data by value to guarantee consistency.
+  sort($data, SORT_STRING);
+
+  // Decode and decrypt the shared secret, and remove PKCS#5 padding.
+  $key = rtrim(mcrypt_decrypt('des', 'wsx1WSCO', base64_decode($secret), 'cbc', 'bTxrBWPp'), "\4");
+
+  // Hash the data and encode the result.
+  return base64_encode(hash_hmac('sha1', implode('', $data) . $key, $key, TRUE));
+}
+
+/**
+ * Map currencies to ISO codes.
+ */
+function _uc_credomatic_currency_code($code) {
+  $codes = array(
+    'GBP' => '826',
+    'USD' => '840',
+    'EUR' => '978',
+    'AUD' => '036',
+    'CAD' => '124',
+  );
+
+  return $codes[$code];
+}

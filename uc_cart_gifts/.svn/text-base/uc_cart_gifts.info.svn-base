@@ -1,0 +1,7 @@
+name = "Notifaciones de regalo"
+description = Hace la logica para registro de nuevos usuario y envio de notificaciones de regalos
+core = 6.x
+package = Ubercart
+dependencies[] = ca
+dependencies[] = uc_order
+dependencies[] = uc_product

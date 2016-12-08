@@ -1,0 +1,4 @@
+name = conectividad_credomatic
+description = Pago en línea mediante conectividad con Credomatic.
+package = Conectividad
+core = 6.x

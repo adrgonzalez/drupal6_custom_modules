@@ -1,0 +1,5 @@
+name = conectividad_QCarga Server
+description = Conectividad de QCarga mediante XMLRPC.
+package = Conectividad
+dependencies[] = services
+core = 6.x

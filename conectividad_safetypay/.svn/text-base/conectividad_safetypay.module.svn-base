@@ -1,0 +1,261 @@
+<?php
+
+/**
+ * Implementation of hook_perm().
+ */
+function conectividad_safetypay_perm() {
+    array('conectividad administer services');
+}
+
+/**
+ * Implementation of hook_menu().
+ */
+function conectividad_safetypay_menu() {
+    $items['conectividad_safetypay'] = array(
+        'title' => 'Conectividad Safetypay',
+        //'access callback' => 'conectividad_safetypay_perm',
+        'access arguments' => array('conectividad administer services'),
+        'access callback' => 'user_access',
+        'page callback' => '_conectividad_safetypay',
+        'page arguments' => array(1),
+        'type' => MENU_CALLBACK,
+    );
+
+    return $items;
+}
+
+/**
+ * Implementation of hook_payment_method().
+ */
+function conectividad_safetypay_payment_method() {
+    $methods[] = array(
+        'id' => 'safetypay',
+        'name' => t('Safetypay'),
+        'title' => t('Payment by Safetypay'),
+        'review' => t('Safetypay Secure ePayments'),
+        'callback' => '_conectividad_safetypay_callback',
+        'weight' => 3,
+        'checkout' => TRUE,
+        'no_gateway' => TRUE,
+    );
+
+    return $methods;
+}
+
+/**
+ * Safetypay payment method callback.
+ */
+function _conectividad_safetypay_callback($op, &$arg1) {
+    switch ($op) {
+        case 'settings':
+            $form['conectividad_safetypay_apikey'] = array(
+                '#type' => 'textfield',
+                '#title' => t('API Key'),
+                '#description' => t('The safetypay api key.'),
+                '#default_value' => variable_get('conectividad_safetypay_apikey', '1asdf3d6f5g2j4w9j8yjy631w57r96h3'),
+                '#size' => 50,
+                '#maxlength' => 50,
+            );
+
+            /* $form['conectividad_safetypay_cpihashkey'] = array(
+              '#type' => 'textfield',
+              '#title' => t('Safetypay hash key'),
+              '#description' => t('The Safetypay hash key (also known as the "shared secret") is sent in a letter to you after your Safetypay service is activated. This key is exactly 32 characters in length, case sensitive, and specific both to you and the associated CPI service. If you have more than one CPI service (e.g. multiple currencies) you will receive one CPI Hash Key for each CPI service. This must be kept confidential.'),
+              '#default_value' => variable_get('conectividad_safetypay_cpihashkey', ''),
+              '#size' => 32,
+              '#maxlength' => 32,
+              );
+
+              $form['conectividad_safetypay_url'] = array(
+              '#type' => 'textfield',
+              '#title' => t('safetypay Post URL'),
+              '#default_value' => variable_get('conectividad_safetypay_url', 'https://mws2.safetypay.com/sandbox/express/post/v.2.2/CreateExpressToken.aspx'),
+              '#description' => t('URL of the secure payment page customers are sent to for payment processing. If unsure, use "@default".', array('@default' => 'https://mws2.safetypay.com/sandbox/express/post/v.2.2/CreateExpressToken.aspx')),
+              );
+
+              $form['conectividad_safetypay_transactiontype'] = array(
+              '#type' => 'radios',
+              '#title' => t('Transaction type'),
+              '#description' => t('Auth mode places a reserve on the card, the available balance remains unchanged. Once the goods have been shipped, you will use the Virtual Terminal to mark the order as "shipped" and mark the funds for settlement. (This corresponds to a "PreAuth" in the Virtual Terminal.)') . '<br />'. t('Capture mode automatically marks the funds ready for settlement. This is typically used for goods that do not need to be physically shipped. (This corresponds to an "Auth" in the Virtual Terminal.)'),
+              '#default_value' => variable_get('conectividad_safetypay_transactiontype', 'Auth'),
+              '#options' => array(
+              'Auth' => t('Auth'),
+              'Capture' => t('Capture'),
+              ),
+              );
+
+              $form['conectividad_safetypay_productionmode'] = array(
+              '#type' => 'radios',
+              '#title' => t('Transaction mode'),
+              '#default_value' => variable_get('conectividad_safetypay_productionmode', 'T'),
+              '#options' => array(
+              'T' => t('Test (no money will be taken)'),
+              'P' => t('Production (customer cards will be charged)'),
+              ),
+              ); */
+
+            return $form;
+        case 'order-submit':
+            _conectividad_safetypay_order_submit();
+            break;
+    }
+}
+
+function _conectividad_safetypay_order_submit() {
+    // deberia llamar al api de safetypay haciendo un post desde codigo para registrar la info y obtener el token
+    // y luego hacer un redirect a esa ruta con el token
+    // y ya
+}
+
+function _conectividad_safetypay() {
+
+    //module_load_include('inc', 'uc_order', 'uc_order.admin');
+
+
+    $Own_ApiKey = '1asdf3d6f5g2j4w9j8yjy631w57r96h3';
+    $Own_SignatureKey = '666';
+
+    $data = file_get_contents('php://input');
+    //$contenido = split('/', curPageURL());
+    //if (in_array('safetypay', $contenido)) {
+    if (!$data) {
+        die('no hay datos ingresados!');
+    }
+
+    /*
+      $array_datos = split("\n", $data);
+
+      $ApiKey = split("=", $array_datos[0]);
+      $RequestDateTime = split("=", $array_datos[1]);
+      $MerchantReferenceNo = split("=", $array_datos[2]);
+      $Signature = split("=", $array_datos[3]);
+
+      echo '   $ApiKey: ' . $ApiKey[1];
+      echo '   $RequestDateTime: ' . $RequestDateTime[1];
+      echo '   $MerchantReferenceNo: ' . $MerchantReferenceNo[1];
+      echo '   $Signature: ' . $Signature[1];
+     */
+
+    //echo 'data'.$data;
+    //echo print_r($_POST);
+
+    $ApiKey = $_POST['ApiKey'];
+
+    $array_date = split('T', $_POST['RequestDateTime']);
+    $fecha = $array_date[0];
+    //echo '| fecha:'.$fecha;
+    $hora = $array_date[1];
+    //echo '| hora:'.$hora;
+    $array_fecha = split('-', $fecha);
+    $array_hora = split(':', $hora);
+    $Y = $array_fecha[0];
+    $m = $array_fecha[1];
+    $d = $array_fecha[2];
+    $H = $array_hora[0];
+    if ($H < 10) {
+        $H = '0' . $H;
+    }
+    $i = $array_hora[1];
+    $s = $array_hora[2];
+
+    $RequestDateTime_hash = $_POST['RequestDateTime'];
+    $RequestDateTime = date($Y . $m . $d . $H . $i . $s);
+    $MerchantReferenceNo = $_POST['MerchantReferenceNo'];
+    $Signature = $_POST['Signature'];
+    /*
+      echo '   $ApiKey: ' . $ApiKey;
+      echo '   $RequestDateTime: ' . $RequestDateTime;
+      echo '   $MerchantReferenceNo: ' . $MerchantReferenceNo;
+      echo '   $Signature: ' . $Signature;
+     */
+
+    date_default_timezone_set('America/Costa_Rica');
+    //2011-05-03 7:24:59
+    $date_now = date('YmdHis');
+    //echo '<br><br>' .$date_now. '<br><br>'  ;
+    //This PHP Example code shows how to add one hour to a date object
+    $todayDate = date("YmdHis"); // current date
+    $currentTime = time($todayDate); //Change date into time
+    //echo "<br>".$currentTime;
+    //Add one hour equavelent seconds 60*60
+    $timeAfterOneHour = $currentTime - 60 * 60;
+    //echo "<br>".$timeAfterOneHour;
+    //echo "<br>Current Date and Time: ".date("YmdHis",$currentTime);
+    //echo "<br>Date and Time After adding one hour: ".date("YmdHis",$timeAfterOneHour);
+
+    $date_limit = date("YmdHis", $timeAfterOneHour);
+
+    if ($RequestDateTime > $date_limit) {
+        if ($Own_ApiKey == $ApiKey) {
+            $to_ApiKey = $RequestDateTime_hash . '+' . $MerchantReferenceNo . '+' . $Own_SignatureKey;
+            //echo '$to_ApiKey: ' . $to_ApiKey .'      ';
+            $hash = hash('sha256', $to_ApiKey);
+            //echo '$hash: ' . $hash . '<br> y el otro hash: ' . $Signature;
+
+            if ($hash == $Signature) {
+                $uc_order = uc_order_load($MerchantReferenceNo);
+                //echo 'order_status: ' . $uc_order->order_status;
+                if ($uc_order->order_status == 'in_checkout') {
+                    uc_payment_enter($uc_order->order_id, 'safetypay', $uc_order->order_total, $uc_order->uid, NULL, 'Pago mediante safetypay');
+                    $result = uc_cart_complete_sale($uc_order);
+                    echo $result;
+
+                    //uc_payment_enter($order_id, $method, $amount, $uid, $data, $comment);
+                    //if (uc_payment_process('safetypay', $uc_order->order_id, $uc_order->order_total)) {
+                    //    $result = uc_cart_complete_sale($uc_order);
+                    //    echo $result;
+                //
+                }
+            }
+        }
+    }
+    else
+        echo 'excedio el limite de tiempo';
+    /*
+      $xml = simplexml_load_string($data);
+      //$xml->Trama->addChild('date','2006-10-13');
+      //echo '<br><br>$xml:|'.$xml->CodigoRecaudador.'|<br><br>';
+      echo '<br><br>xml count:|'. $xml->count() .'|<br><br>';
+
+      $count_nodes = $xml->count();
+
+      switch ($count_nodes) {
+      case 3:                     //VerificarDisponibilidadServicio
+      responseXML();
+      break;
+      case 6:                     //ConsultarRecibos
+      responseXML();
+      //echo '<br>data:' . $xml->CodigoRecaudador . '|<br>';
+      break;
+      case 10:                     //PagarRecibo
+      responseXML();
+      break;
+      /*case 5:                     //ConsultarPago
+      check_ConsultarPago($data, 5);
+      break; */
+    //}
+    //}
+}
+
+function responseXML() {
+    $CodigoRespuesta = 00;
+
+    $xml = '<TramaXML>
+                <CodigoRecaudador>00300</CodigoRecaudador>';
+
+    //VerificarDisponibilidadServicio
+    $DescripcionRespuesta = 'SERVICIO ACTIVO';
+    $xml .= '<ConsecutivoTransaccion>'
+            . $ConsecutivoTransaccion .
+            '</ConsecutivoTransaccion><CodigoRespuesta>'
+            . $CodigoRespuesta .
+            '</CodigoRespuesta><DescripcionRespuesta>'
+            . $DescripcionRespuesta .
+            '</DescripcionRespuesta>';
+
+    $xml .= '</TramaXML>
+            ';
+    echo $xml;
+}
+
+?>

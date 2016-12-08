@@ -1,0 +1,10 @@
+; $Id: uc_productos_regalos.info
+
+name = Hacer regalos
+description = Modificación que permite el regalar compras a terceros
+package = "Ubercart - extra"
+version = "6.x-1.0"
+core = "6.x"
+
+
+

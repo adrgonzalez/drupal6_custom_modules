@@ -1,0 +1,39 @@
+<?php
+
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+function product_preference_views_handlers() {
+    return array(
+        'info' => array(
+            'path' => drupal_get_path('module', 'product_preference') . '/views',
+        ),
+        'handlers' => array(
+            'views_handler_filter_product_preference' => array(
+                'parent' => 'views_handler_field',
+            ),
+        ),
+    );
+}
+
+/**
+ * Implementation of hook_views_data()
+ */
+function product_preference_views_data() {
+    $data = array();
+
+    $data['term_node']['suggest'] = array(
+        'title' => t('Products Suggested'),
+        'help' => t('Contains the products suggested'),
+        'filter' => array(
+            'title' => t('Product Suggested'),
+            'handler' => 'views_handler_filter_product_preference',
+            'numeric' => TRUE,
+        ),
+    );
+  
+    return $data;
+}
+

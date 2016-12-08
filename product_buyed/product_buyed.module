@@ -1,0 +1,39 @@
+<?php
+
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+function product_buyed_views_handlers() {
+    return array(
+        'info' => array(
+            'path' => drupal_get_path('module', 'product_buyed') . '/views',
+        ),
+        'handlers' => array(
+            'views_handler_filter_product_buyed' => array(
+                'parent' => 'views_handler_field',
+            ),
+        ),
+    );
+}
+
+/**
+ * Implementation of hook_views_data()
+ */
+function product_buyed_views_data() {
+    $data = array();
+
+    $data['term_node']['buyed'] = array(
+        'title' => t('Products buyed'),
+        'help' => t('Users also buyed'),
+        'filter' => array(
+            'title' => t('Product buyed'),
+            'handler' => 'views_handler_filter_product_buyed',
+            'numeric' => TRUE,
+        ),
+    );
+
+    return $data;
+}
+

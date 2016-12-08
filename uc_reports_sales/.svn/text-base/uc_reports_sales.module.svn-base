@@ -1,0 +1,431 @@
+<?php
+
+/**
+ * Implementation of hook_perm().
+ */
+function uc_reports_sales_perm() {
+    return array('view reports sales', 'administer reports sales');
+}
+
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+function uc_reports_sales_menu() {
+    $items = array();
+    $items['admin/store/reports/sales/provider/year'] = array(
+        'title' => 'Sales per provider',
+        'description' => 'View store sales for a particular provider',
+        'page callback' => 'uc_reports_sales_provider',
+        'access arguments' => array('administer reports sales'),
+        'access callback' => 'user_access',
+        'type' => MENU_LOCAL_TASK,
+        'weight' => -7,
+    );
+    $items['admin/store/reports/sales/provider/detail'] = array(
+        'title' => 'Sales per provider detail',
+        'description' => 'View store sales details for a particular provider',
+        'page callback' => 'uc_reports_sales_provider_detail',
+        'access arguments' => array('administer reports sales'),
+        'access callback' => 'user_access',
+        'type' => MENU_CALLBACK,
+        'weight' => 1,
+    );
+    return $items;
+}
+
+/**
+ * Display the yearly sales report form and table.
+ */
+function uc_reports_sales_provider($is_myreport = false, $provider_myreport = 0) {
+    $timezone_offset = time() + _uc_reports_timezone_offset();
+    $order_statuses = _uc_reports_order_statuses();
+
+    // Get the year for the report from the URL.
+    if (intval(arg(6)) == 0) {
+        $year = format_date($timezone_offset, 'custom', 'Y', 0);
+    } else {
+        $year = arg(6);
+    }
+
+    if (intval(arg(7)) == 0) {
+        $provider = 0;
+    } else {
+        $provider = arg(7);
+    }
+
+    if ($provider_myreport) {
+        $provider = $provider_myreport;
+    }
+    //drupal_set_message("year: " . $year . " provider:  " . $provider . '|' . arg(6) . arg(7) . '|', 'error');
+    // Build the header for the report table.
+    $header = array(t('Month'), t('Number of orders'), t('Total revenue'), t('Average order'));
+
+    // Build the header to the CSV export.
+    $csv_rows = array(array(t('Month'), t('Number of orders'), t('Total revenue'), t('Average order')));
+
+    $context = array(
+        'revision' => 'formatted-original',
+        'type' => 'amount',
+    );
+
+    // For each month of the year...
+    for ($i = 1; $i <= 12; $i++) {
+        // Calculate the start and end timestamps for the month in local time.
+        $month_start = gmmktime(0, 0, 0, $i, 1, $year);
+        $month_end = gmmktime(23, 59, 59, $i + 1, 0, $year);
+
+        // Get the sales report for the month.
+        $month_sales = uc_reports_get_sales($month_start, $provider, 'month');
+
+        // Calculate the average order total for the month.
+        if ($month_sales['total'] != 0) {
+            $month_average = round($month_sales['income'] / $month_sales['total'], 2);
+        } else {
+            $month_average = 0;
+        }
+
+        // Add the month's row to the report table.
+        if ($is_myreport == TRUE && !is_numeric($is_myreport)) {
+            $rows[] = array(
+                l(gmdate('M Y', $month_start), 'user/myreports/detail/' . $month_start . '/' . $month_end),
+                $month_sales['total'],
+                uc_price($month_sales['income'], $context),
+                uc_price($month_average, $context),
+            );
+        } else {
+            $rows[] = array(
+                l(gmdate('M Y', $month_start), 'admin/store/reports/sales/provider/detail/' . $month_start . '/' . $month_end . '/' . $provider),
+                $month_sales['total'],
+                uc_price($month_sales['income'], $context),
+                uc_price($month_average, $context),
+            );
+        }
+        // Add the data to the CSV export.
+        $csv_rows[] = array(
+            gmdate('M Y', $month_start),
+            $month_sales['total'],
+            uc_price($month_sales['income'], $context),
+            uc_price($month_average, $context),
+        );
+    }
+
+    // Calculate the start and end timestamps for the year in local time.
+    $year_start = gmmktime(0, 0, 0, 1, 1, $year);
+    $year_end = gmmktime(23, 59, 59, 1, 0, $year + 1);
+
+    // Get the sales report for the year.
+    $year_sales = uc_reports_get_sales($year_start, $provider, 'year');
+
+    // Calculate the average order total for the year.
+    if ($year_sales['total'] != 0) {
+        $year_average = round($year_sales['income'] / $year_sales['total'], 2);
+    } else {
+        $year_average = 0;
+    }
+
+    // Add the total row to the report table.
+    if ($is_myreport == TRUE && !is_numeric($is_myreport)) {
+        $rows[] = array(
+            l(t('Total @year', array('@year' => $year)), 'user/myreports/detail/' . $year_start . '/' . $year_end),
+            $year_sales['total'],
+            uc_price($year_sales['income'], $context),
+            uc_price($year_average, $context),
+        );
+    } else {
+        $rows[] = array(
+            l(t('Total @year', array('@year' => $year)), 'admin/store/reports/sales/provider/detail/' . $year_start . '/' . $year_end),
+            $year_sales['total'],
+            uc_price($year_sales['income'], $context),
+            uc_price($year_average, $context),
+        );
+    }
+    // Add the total data to the CSV export.
+    $csv_rows[] = array(
+        t('Total @year', array('@year' => $year)),
+        $year_sales['total'],
+        uc_price($year_sales['income'], $context),
+        uc_price($year_average, $context),
+    );
+
+    // Cache the CSV export.
+    $csv_data = uc_reports_store_csv('uc_sales_yearly', $csv_rows);
+
+    // Build the page output holding the form, table, and CSV export link.
+    //drupal_set_message("year: $year, proveedor: $provider", 'error');
+    //drupal_set_message("is_myreport: $is_myreport", 'error');
+    /* if ($is_myreport == TRUE && !is_numeric($is_myreport)) {
+      $output = theme('table', $header, $rows, array('width' => '100%', 'class' => 'uc-sales-table'))
+      . '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>';
+      } else {
+      drupal_set_message("myreport: $is_myreport", 'error'); */
+    $output = drupal_get_form('uc_reports_sales_provider_form', $year, $provider)
+            . theme('table', $header, $rows, array('width' => '100%', 'class' => 'uc-sales-table'))
+            . '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>';
+    //}
+    return $output;
+}
+
+/**
+ * Form to specify a year for the yearly sales report.
+ *
+ * @ingroup forms
+ * @see uc_reports_sales_provider_form_submit()
+ */
+function uc_reports_sales_provider_form($form_state, $year, $provider) {
+    //drupal_set_message("year: " . $year . " provider:  " . $provider);
+    $providers = db_query("SELECT * FROM {uc_product_providers}");
+    $options = array();
+    $options[] = '- Please choose -';
+    while ($provid = db_fetch_object($providers)) {
+        if ($provid) {
+            $options[$provid->id_provider] = $provid->name;
+        }
+    }
+    $form = array();
+    if (is_productor() > 0) {
+        
+    } else {
+        $form['provider'] = array(
+            '#type' => 'select',
+            '#title' => t("Providers"),
+            '#description' => t('Select a provider'),
+            '#default_value' => $provider,
+            '#options' => $options,
+        );
+        $form['year'] = array(
+            '#type' => 'textfield',
+            '#title' => t('Sales year'),
+            '#default_value' => $year,
+            '#maxlength' => 4,
+            '#size' => 4,
+            '#prefix' => '<div class="sales-year">',
+            '#suffix' => '</div>',
+        );
+        $form['submit'] = array(
+            '#type' => 'submit',
+            '#value' => t('View'),
+            '#prefix' => '<div class="sales-year">',
+            '#suffix' => '</div>',
+        );
+    }
+    return $form;
+}
+
+/**
+ * @see uc_reports_sales_provider_form()
+ */
+function uc_reports_sales_provider_form_submit($form, &$form_state) {
+    //drupal_goto('admin/store/reports/sales/provider/year/'. $form_state['values']['year'] .'/'. $form_state['values']['provider']);
+    $form_state['redirect'] = 'admin/store/reports/sales/provider/year/' . $form_state['values']['year'] . '/' . $form_state['values']['provider'];
+}
+
+/**
+ * Given a timestamp and time period function returns sales that occurred in
+ * that time period
+ *
+ * @param $time
+ *   A UNIX time stamp representing the time in which to get sales data
+ * @param $period
+ *   The amount of time over which to count sales (e.g. [1] day, month, year)
+ * @return:
+ *   An associative array containing information about sales:
+ *   - "date" => A string representing the day counting was started
+ *   - "income" => The total revenue that occurred during the time period
+ *   - "total" => The total number of orders completed during the time period
+ *   - "average" => The average revenue produced for each order
+ */
+function uc_reports_get_sales($time, $provider, $period = 'day') {
+    $timezone = _uc_reports_timezone_offset();
+
+    // Get the current date markers.
+    $date = array(
+        'day' => format_date($time, 'custom', 'j', 0),
+        'month' => format_date($time, 'custom', 'n', 0),
+        'year' => format_date($time, 'custom', 'Y', 0),
+    );
+
+    // Add one to the granularity chosen, and use it to calc the new time.
+    $date[$period] += 1;
+    $new_time = gmmktime(0, 0, 0, $date['month'], $date['day'], $date['year']);
+    // Set up the default SQL for getting orders with the proper status
+    // within this period.
+    $order_statuses = uc_reports_order_statuses();
+    $filtro_provider = '';
+    if ($provider > 0) {
+        $filtro_provider = " and uc_product_providers.id_provider = $provider ";
+    }
+    /* $sql_frag = " FROM {uc_orders} as o 
+      WHERE o.order_status IN $order_statuses
+      AND created >= $time
+      and created < $new_time"; */
+    $sql_frag = " FROM uc_orders
+                inner join uc_order_products on uc_orders.order_id = uc_order_products.order_id
+                inner join product_providers on uc_order_products.nid = product_providers.nid 
+                inner join uc_product_providers on product_providers.id_provider = uc_product_providers.id_provider 
+                WHERE uc_orders.order_status IN ('completed') 
+                and uc_orders.created >= $time 
+                and uc_orders.created < $new_time $filtro_provider";
+    //drupal_set_message("sql_frag: $sql_frag");
+    // Get the total value of the orders.
+    $output = array('income' => 0);
+
+    $orders = db_query("SELECT uc_order_products.price, uc_orders.order_total $sql_frag");
+    while ($order = db_fetch_object($orders)) {
+        $output['income'] += $order->price;
+    }
+
+    // Get the total amount of orders.
+
+    $query = "SELECT uc_orders.order_id $sql_frag group by uc_orders.order_id";
+    //drupal_set_message("query: $query");
+    $counter = db_query($query);
+    $count = 0;
+    while ($counters = db_fetch_object($counter)) {
+        $count += 1;
+    }
+    $output['total'] = $count;
+    //drupal_set_message("query: $query", 'error');
+    // Average for this period.
+    $output['average'] = ($count != 0) ? round($output['income'] / $count, 2) : 0;
+
+    return $output;
+}
+
+/**
+ * Return a SQL friendly array of order statuses for orders used in reports.
+ */
+function uc_reports_order_statuses() {
+    $statuses = variable_get('uc_reports_reported_statuses', array('completed'));
+
+    return "('" . implode("', '", $statuses) . "')";
+}
+
+function uc_reports_sales_provider_detail($myreport = '') {
+    $myreport_provider = is_productor();
+    //drupal_set_message("$myreport_provider, algo:" . arg(6) . '|' . arg(7) . '|' . arg(8) . "|myreport: $myreport", 'error');
+    $filter = "";
+    if (arg(8) > 0) {
+        $filter = ' and uc_product_providers.id_provider= ' . arg(8) . ' ';
+    }
+    if ($myreport == 'myreport') {
+        $filter = ' and uc_product_providers.id_provider= ' . $myreport_provider . ' ';
+    }
+    // Build the header for the report table.
+    $header = array(t('Order'), t('Provider'), t('Product'), t('Total revenue'), t('Participation revenue'));
+
+    // Build the header to the CSV export.
+    $csv_rows = array(array(t('Order'), t('Provider'), t('Product'), t('Total revenue'), t('participation revenue')));
+
+    $context = array(
+        'revision' => 'formatted-original',
+        'type' => 'amount',
+    );
+
+    /* $results = db_query("SELECT o.order_id, o.order_total, 
+      o.order_status, o.created, os.title FROM {uc_orders} o LEFT JOIN {uc_order_statuses} os
+      ON o.order_status = os.order_status_id WHERE o.order_status
+      IN ('completed') AND o.created >= %d AND o.created <= %d
+      and
+      ORDER BY o.created DESC", arg(6), arg(7)); */
+    if ($myreport == 'myreport') {
+        //drupal_set_message("algo:" . arg(2) . '|' . arg(3) . '|' . arg(4) . '|');
+        $month_init = arg(3);
+    } else {
+        $month_init = arg(6);
+    }
+    if ($myreport == 'myreport') {
+        $month_end = arg(4);
+    } else {
+        $month_end = arg(7);
+    }
+    $results = db_query("SELECT uc_product_providers.id_provider, o.order_id, o.order_total, o.order_status, o.created, os.title
+                    FROM uc_orders o 
+                    LEFT JOIN uc_order_statuses os ON o.order_status = os.order_status_id
+                    inner join uc_order_products on o.order_id= uc_order_products.order_id
+                    inner join product_providers on uc_order_products.nid = product_providers.nid 
+                    inner join uc_product_providers on product_providers.id_provider = uc_product_providers.id_provider  
+                    WHERE o.order_status 
+                    IN ('completed') 
+                    AND o.created >= %d  
+                    AND o.created <= %d
+                    $filter
+                    ORDER BY o.created DESC", $month_init, $month_end);
+    $orders = array();
+    while ($result = db_fetch_object($results)) {
+        //drupal_set_message('id_provider: ' . $result->id_provider);
+        $orders_id[] = $result->order_id; //implode(',', get_products($result->order_id));
+    }
+    //print_r($orders_id);
+    if ($myreport == 'myreport') {
+        $array_rows = get_rows($orders_id, $myreport_provider);
+    } else {
+        $array_rows = get_rows($orders_id, arg(8));
+    }
+
+    for ($i = 0; $i < count($array_rows); $i++) {
+        $rows[] = $array_rows[$i];
+        $csv_rows[] = $array_rows[$i];
+    }
+    // Cache the CSV export.
+    $csv_data = uc_reports_store_csv('uc_sales_provider', $csv_rows);
+    // Build the page output holding the form, table, and CSV export link.
+    $export = '<span style="font-weight: bold; color: red">' . t("No results") . '</span>'; 
+    if (count($array_rows)) {
+        $export = '<div class="uc-reports-links">' . l(t('Export to CSV file.'), 'admin/store/reports/getcsv/' . $csv_data['report'] . '/' . $csv_data['user']) . '</div>';
+    }
+    $output = theme('table', $header, $rows, array('width' => '100%', 'class' => 'uc-sales-table')) . $export;
+
+    return $output;
+}
+
+function get_porcentaje($provider_id) {
+    $results = db_query("SELECT percentage FROM {uc_product_providers} WHERE id_provider = %d", $provider_id);
+    $result = db_fetch_object($results);
+    return $result->percentage;
+}
+
+function get_rows($array_orders_id, $provider) {//, $array_orders_totals) {
+    $nodes = array();
+    $filter = "";
+    if ($provider > 0) {
+        $filter = " and product_providers.id_provider=$provider ";
+    }
+    if ($array_orders_id) {
+        $orders = implode(',', $array_orders_id);
+        $orders_id = array();
+        $query = "SELECT uc_order_products.order_id, uc_order_products.price, uc_order_products.title, uc_order_products.nid, 
+            product_providers.id_provider, uc_product_providers.name, uc_product_providers.percentage 
+            FROM uc_order_products 
+            inner join product_providers on uc_order_products.nid = product_providers.nid
+            inner join uc_product_providers on product_providers.id_provider = uc_product_providers.id_provider
+            WHERE order_id in ($orders) $filter            
+            order by uc_order_products.order_id";
+        $results = db_query($query);
+        while ($result = db_fetch_object($results)) {
+            if ($result) {
+                $porcentaje = consultar_porcentaje($result->id_provider, $result->order_id, $result->nid);
+                $participation = $result->price * ($porcentaje / 100); //$result->percentage / 100);
+                $nodes[] = array($result->order_id, $result->name, l($result->title, "node/$result->nid/edit", array('attributes' => array('target' => '_blank'))), $result->price, $participation);
+            }
+        }
+    }
+    return $nodes;
+}
+
+function is_productor() {
+    global $user;
+    $result = db_fetch_object(db_query("SELECT uc_product_providers.id_provider
+                                FROM users
+                                inner join users_roles on users.uid = users_roles.uid
+                                inner join role on users_roles.rid = role.rid
+                                inner join uc_product_providers on users.uid = uc_product_providers.uid
+                                where role.name = 'Productor' and role.name <> 'Admnistrador' 
+                                and users.uid = $user->uid"));
+    $id_provider = 0;
+    if ($result->id_provider > 0) {
+        $id_provider = $result->id_provider;
+    }
+    return $id_provider;
+}

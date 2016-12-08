@@ -1,0 +1,4 @@
+name = conectividad_safetypay
+description = Conectividad con Safetypay.
+package = Conectividad
+core = 6.x

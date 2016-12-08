@@ -1,0 +1,9 @@
+name = Reports month
+description = View reports about your store's sales, customers, and products.
+dependencies[] = uc_order
+dependencies[] = uc_product
+package = "Ubercart - core (optional)"
+core = 6.x
+php = 5.0
+
+

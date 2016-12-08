@@ -1,0 +1,114 @@
+<?php
+
+/**
+* Implementation of hook_install().
+*/
+function uc_productos_regalos_install() {
+
+    // Use schema API to create database table.
+    drupal_install_schema('uc_productos_regalos');
+	
+}
+
+/**
+* Implementation of hook_uninstall().
+*/
+function uc_productos_regalos_uninstall() {
+
+    // Use schema API to delete database table.
+    drupal_uninstall_schema('uc_productos_regalos');
+}
+
+/**
+* Implementation of hook_schema().
+*/
+function uc_productos_regalos_schema() {
+    
+    $schema = array();
+    
+    $schema['uc_productos_regalos_temporal'] = array(
+        
+        'fields' => array(
+            
+            'nid' => array(
+
+                'type' => 'int',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+                'size' => 'normal',
+                'default' => 0,
+                'description' => t('id de la orden'),
+            ),
+            
+             'uid' => array(
+
+                'type' => 'int',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+                'size' => 'normal',
+                'default' => 0,
+                'description' => t('id del usuario'),
+            ),
+            
+            'mail' => array(
+                
+                'type' => 'varchar',
+                'length' => 100,
+                'not null' => TRUE,
+                'description' => t('correo electronico de amigo a regalarle el producto.'),
+            ),
+            
+        ),
+        
+    );
+    
+    $schema['uc_productos_regalos'] = array(
+        
+        'fields' => array(
+            
+            'nid' => array(
+
+                'type' => 'int',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+                'size' => 'normal',
+                'default' => 0,
+                'description' => t('id de la orden'),
+            ),
+            
+             'uid' => array(
+
+                'type' => 'int',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+                'size' => 'normal',
+                'default' => 0,
+                'description' => t('id del usuario'),
+            ),
+            
+            'order_id' => array(
+
+                'type' => 'int',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+                'size' => 'normal',
+                'default' => 0,
+                'description' => t('id de la orden'),
+            ),
+            
+            'mail' => array(
+                
+                'type' => 'varchar',
+                'length' => 100,
+                'not null' => TRUE,
+                'description' => t('correo electronico de amigo a regalarle el producto.'),
+            ),
+            
+        ),
+        
+    );
+     
+    
+    return $schema;
+    
+}

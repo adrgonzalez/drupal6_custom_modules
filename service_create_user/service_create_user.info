@@ -1,0 +1,4 @@
+name = create user service
+description = Creacion de usuarios mediante web service
+package = Landing Page
+core = 6.x

@@ -1,0 +1,113 @@
+<?php
+
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+function conectividad_QCarga_service() {
+    return array(
+// user.getlist
+        array(
+            '#method' => 'QCarga.consultar_saldo',
+            '#callback' => 'consultar_saldo',
+            '#access callback' => 'user_service_QCarga_access',
+            //'#file' => array('file' => 'inc', 'module' => 'user_service'),
+            '#args' => array(
+                array(
+                    '#name' => 'uid',
+                    '#type' => 'int',
+                    '#description' => t('User ID.'),
+                ),
+            ),
+            '#return' => 'struct',
+            '#help' => t('open all user details.')
+        ),
+        array(
+            '#method' => 'QCarga.comprar_paquete',
+            '#callback' => 'comprar_paquete',
+            '#access callback' => 'user_service_QCarga_access',
+            //'#file' => array('file' => 'inc', 'module' => 'user_service'),
+            '#args' => array(
+                array(
+                    '#name' => 'uid',
+                    '#type' => 'int',
+                    '#description' => t('User ID.'),
+                ),
+                array(
+                    '#name' => 'pid',
+                    '#type' => 'int',
+                    '#description' => t('Package ID.'),
+                ),
+            ),
+            '#return' => 'struct',
+            '#help' => t('open all user details.')
+        ),
+    );
+}
+
+/* * **************************************************************************
+ * get user's list downloads.
+ *
+ * @param $uid
+ *   UID of the user.
+ *
+ * @return
+ *   A user's points.
+ *
+ * @see user_load()
+ */
+
+function consultar_saldo($uid) {
+    //module_load_include('inc', 'uc_file', 'uc_file.pages');
+    $user = user_load($uid);
+    $query = "SELECT points FROM userpoints where uid = $uid";
+    $results = db_query($query);
+    $result = db_fetch_object($results);
+    $list = array();
+    $list[] = array('name' => $user->name, 'points' => $result->points);
+    //drupal_set_message("points: $result->points, uid: $uid");
+    //echo "points: $result->points, uid: $uid";
+    return $list;
+}
+
+/* * **************************************************************************
+ * get user's list downloads.
+ *
+ * @param $uid
+ *   UID of the user.
+ *
+ * @param $pid
+ *   Package id.
+ *
+ * @return
+ *   A user's list.
+ *
+ * @see user_load()
+ */
+
+function comprar_paquete($uid, $pid) {
+    //module_load_include('inc', 'uc_file', 'uc_file.pages');
+    $user = user_load($uid);
+    $query = "SELECT points FROM userpoints where uid = $uid";
+    $results = db_query($query);
+    $result = db_fetch_object($results);
+    $list = array();
+    $list[] = array('name' => $user->name, 'points' => $result->points);
+    //drupal_set_message("points: $result->points, uid: $uid");
+    // "points: $result->points, uid: $uid";
+    return $list;
+}
+
+/**
+ * Check if the user is allowed to get the user data.
+ *
+ * @param $uid
+ *   Number. The user ID.
+ */
+function user_service_QCarga_access($uid) {
+    global $user;
+    return user_access('get any user data');
+    //return (($user->uid == $uid && user_access('get own user data')) || ($user->uid != $uid && user_access('get any user data')));
+//return true;
+}

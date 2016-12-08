@@ -1,0 +1,791 @@
+<?php
+
+/**
+ * Implementation of hook_perm().
+ */
+/*function conectividad_bcr_perm() {
+    return array('Access Conectividad BCR');
+}
+*/
+/**
+ * Implementation of hook_menu().
+ */
+function conectividad_bcr_menu() {
+    $items['conectividad_bcr'] = array(
+            'title'             => 'Conectividad BCR',
+            'access callback'   => TRUE, //'conectividad_bcr_perm',
+            'page callback'     => '_conectividad_bcr',
+            'page arguments'    => array(1),
+            'type'              => MENU_CALLBACK,
+    );
+
+    return $items;
+}
+
+/**
+ * Implementation of hook_payment_method().
+ */
+function conectividad_bcr_payment_method() {
+    $methods[] = array(
+            'id' => 'bcr',
+            'name' => t('BCR Conectividad'),
+            'title' => t('Pago mediante BCR Conectividad'),
+            'review' => t('bcr Secure ePayments'),
+            'callback' => '_conectividad_bcr_callback',
+            'weight' => 3,
+            'checkout' => FALSE,
+            'no_gateway' => TRUE,
+    );
+
+    return $methods;
+}
+
+function _conectividad_bcr_callback(){
+    
+}
+
+function _conectividad_bcr() {
+    $data = file_get_contents('php://input');
+    //$contenido = split('/', curPageURL());
+    //if (in_array('bcr', $contenido)) {
+    if (!$data) {
+        die('no hay datos ingresados!');
+    }
+
+    $xml = simplexml_load_string($data);
+    //$xml->Trama->addChild('date','2006-10-13');
+    //echo '<br><br>$xml:|'.$xml->CodigoRecaudador.'|<br><br>';
+    //echo '<br><br>xml count:|'. $xml->count() .'|<br><br>';
+
+    $count_nodes = count($xml);//$xml->count();
+    //echo "hola". count($xml);
+
+    switch ($count_nodes) {
+        case 3:                     //VerificarDisponibilidadServicio
+            check_VerificarDisponibilidadServicio($data, 3);
+            break;
+        case 6:                     //ConsultarRecibos
+            check_ConsultarRecibos($data, 6);
+            //echo '<br>data:' . $xml->CodigoRecaudador . '|<br>';
+            break;
+        case 10:                     //PagarRecibo
+            check_PagarRecibo($data, 10);
+            break;
+        /*case 5:                     //ConsultarPago
+            check_ConsultarPago($data, 5);
+            break;*/
+    }
+    //}
+}
+
+function check_VerificarDisponibilidadServicio($data, $method) {
+    $xml = simplexml_load_string($data);
+    if ($xml->CodigoRecaudador != '00300')
+        die('<br><br>error en CodigoRecaudador validaci&oacute;n de datos!<br><br>');
+    if ($xml->ConsecutivoTransaccion == '')
+        die('<br><br>error en CodigoAgencia validaci&oacute;n de datos!<br><br>');
+    //echo "SERVICIO ACTIVO";
+    $info = db_fetch_object(db_query("SELECT z.*, c.country_name FROM {uc_zones} AS z LEFT JOIN {uc_countries} AS c ON z.zone_country_id = c.country_id ORDER BY c.country_name, z.zone_name"));
+    if ($info) {
+        responseXML_VerificarDisponibilidadServicio($xml->ConsecutivoTransaccion);
+    }
+    else {
+        die('<br><br>error en la conexi&oacute;n con la base de datos!<br><br>');
+    }
+}
+
+function responseXML_VerificarDisponibilidadServicio($ConsecutivoTransaccion) {
+    $CodigoRespuesta = 00;
+    header ("Content-type: text/xml");
+    $xml = '<?xml version="1.0"?> <TramaXML>
+                <CodigoRecaudador>00300</CodigoRecaudador>';
+
+    //VerificarDisponibilidadServicio
+    $DescripcionRespuesta = 'SERVICIO ACTIVO';
+    $xml .= '<ConsecutivoTransaccion>'
+            . $ConsecutivoTransaccion .
+            '</ConsecutivoTransaccion><CodigoRespuesta>'
+            . $CodigoRespuesta .
+            '</CodigoRespuesta><DescripcionRespuesta>'
+            . $DescripcionRespuesta .
+            '</DescripcionRespuesta>';
+
+    $xml .= '</TramaXML>
+            ';
+    echo $xml;
+}
+
+function check_ConsultarRecibos($data, $method) {
+    $xml = simplexml_load_string($data);
+    //echo '<br>data:' . $xml->CodigoRecaudador . '|<br>';
+    if ($xml->CodigoRecaudador == '')
+        die('<br><br>CodigoRecaudador: error en validaci&oacute;n de datos!<br><br>');
+    if ($xml->CodigoAgencia == '')
+        die('<br><br>CodigoAgencia :error en validaci&oacute;n de datos!<br><br>');
+    if ($xml->ConsecutivoTransaccion == '')
+        die('<br><br>ConsecutivoTransaccion :error en validaci&oacute;n de datos!<br><br>');
+    if ($xml->CodigoConvenio == '')
+        die('<br><br>CodigoConvenio :error en validaci&oacute;n de datos!<br><br>');
+    if ($xml->TipoBusqueda == '')
+        die('<br><br>TipoBusqueda :error en validaci&oacute;n de datos!<br><br>');
+    if ($xml->NumeroServicio == '')
+        die('<br><br>NumeroServicio :error en validaci&oacute;n de datos!<br><br>');
+    echo "ConsultarRecibos<br><br>";
+    responseXML_ConsultarRecibos($xml->ConsecutivoTransaccion, $xml->CodigoAgencia, $xml->CodigoConvenio, $xml->NumeroServicio);
+}
+
+function responseXML_ConsultarRecibos($ConsecutivoTransaccion, $CodigoAgencia, $CodigoConvenio, $IdentificacionCliente) {
+    $CodigoRespuesta = 00;
+    $TipoBusqueda = "1"; // crear un nuevo tipo
+    header ("Content-type: text/xml");
+    $results = db_query("SELECT * FROM {users} WHERE mail = '" . $IdentificacionCliente . "'");
+    //echo '<br>name:'.$CodigoAgencia.'<br>'.$IdentificacionCliente.'$IdentificacionCliente:'.$result->mail.'|<br>';
+
+    if ($results) {
+        while ($result = db_fetch_object($results)) {
+            $NombreCliente = $result->name;
+            $DescripcionRespuesta = 'Paquetes disponibles';
+        }
+    }
+
+    $xml = '<?xml version="1.0"?> <TramaXML>
+                <CodigoRecaudador>00300</CodigoRecaudador>
+                <CodigoAgencia>'
+                . $CodigoAgencia .
+                '</CodigoAgencia><ConsecutivoTransaccion>'
+                . $ConsecutivoTransaccion .
+                '</ConsecutivoTransaccion><CodigoConvenio>'
+                . $CodigoConvenio .
+                '</CodigoConvenio><CodigoRespuesta>'
+                . $CodigoRespuesta .
+                '</CodigoRespuesta><DescripcionRespuesta>'
+                . $DescripcionRespuesta .
+                '</DescripcionRespuesta><IdentificacionCliente>'
+                . $IdentificacionCliente .
+                '</IdentificacionCliente><NombreCliente>'
+                . $NombreCliente .
+                '</NombreCliente>
+                 <Servicios>';
+
+    $sql = "SELECT node.nid, node.title, uc_products.sell_price, node_revisions.body \n"
+            . "FROM uc_products \n"
+            . "INNER JOIN node ON uc_products.nid = node.nid \n"
+            . "INNER JOIN node_revisions ON node_revisions.nid = uc_products.nid \n"
+            . "WHERE node.type = 'titi_paquete'";
+
+    $paquetes = db_query($sql);
+    //echo '$info: '.db_fetch_object($paquetes)->nid.'|'.$paquetes.'<br>';
+
+    if ($paquetes) {
+        while ($paquete = db_fetch_object($paquetes)) {
+            /*echo '<br>nid' . $paquete->nid;
+            echo '<br>title' . $paquete->title;
+            echo '<br>sell_price' . $paquete->sell_price;
+            echo '<br>body' . $paquete->body;*/
+            $Self = $paquete->nid;
+            $Nombre = $paquete->title;
+            $MontoRecibo = $paquete->sell_price;
+            $Descripcion = $paquete->body;
+            $xml .= '<Servicio>
+                        <NumeroServicio>'
+                        . $NumeroServicio .
+                        '</NumeroServicio>
+                         <DetalleRecibosPendientes>
+                            <Recibo>
+                                <PeriodoRecibo>'
+                                . $PeriodoRecibo .
+                                '</PeriodoRecibo><MontoRecibo>'
+                                . $MontoRecibo .
+                                '</MontoRecibo><FechaVencimiento>'
+                                . $FechaVencimiento .
+                                '</FechaVencimiento><NumeroFactura>'
+                                . $NumeroFactura .
+                                '</NumeroFactura><Self>'
+                                . $Self .
+                                '</Self><Nombre>'
+                                . $Nombre .
+                                '</Self><Descripcion>'
+                                . $Descripcion .
+                                '</Descripcion>
+                            </Recibo>
+                         </DetalleRecibosPendientes>
+                    </Servicio>';
+        }
+    }
+    else {
+        $xml .= '<Servicio><NumeroServicio>
+                    </NumeroServicio>
+                     <DetalleRecibosPendientes>
+                        <Recibo>
+                            <PeriodoRecibo>
+                            </PeriodoRecibo><MontoRecibo>
+                            </MontoRecibo><FechaVencimiento>
+                            </FechaVencimiento><NumeroFactura>
+                            </NumeroFactura><Self>
+                            </Self><Nombre>
+                            </Self><Descripcion>
+                            </Descripcion>
+                        </Recibo>
+                     </DetalleRecibosPendientes>
+                </Servicio>';
+    }
+    $xml .= '</Servicios>
+             <DetalleRubrosInformativos>
+                <Rubro>
+                    <CodigoRubro>
+                    </CodigoRubro>
+                    <DescripcionRubro>
+                    </DescripcionRubro>
+                    <ValorRubro>
+                    </ValorRubro>
+                </Rubro>
+             </DetalleRubrosInformativos>';
+    $xml .= '</TramaXML>';
+    echo $xml;
+}
+
+function check_PagarRecibo($data, $method) {
+    $xml = simplexml_load_string($data);
+    if ($xml->CodigoRecaudador == '')
+        die('<br><br> :error en validaci&oacute;n de datos!<br><br>');
+    if ($xml->CodigoAgencia == '')
+        die('<br><br> :error en validaci&oacute;n de datos!<br><br>');
+    if ($xml->ConsecutivoTransaccion == '')
+        die('<br><br> :error en validaci&oacute;n de datos!<br><br>');
+    if ($xml->CodigoConvenio == '')
+        die('<br><br> :error en validaci&oacute;n de datos!<br><br>');
+    if ($xml->NumeroServicio == '')
+        die('<br><br> :error en validaci&oacute;n de datos!<br><br>');
+    if ($xml->MontoRecibo == '')
+        die('<br><br> :error en validaci&oacute;n de datos!<br><br>');
+    if ($xml->NumeroFactura == '')
+        die('<br><br> :error en validaci&oacute;n de datos!<br><br>');
+    if ($xml->Self == '')
+        die('<br><br> :error en validaci&oacute;n de datos!<br><br>');
+    if ($xml->FechaTransaccion == '')
+        die('<br><br> :error en validaci&oacute;n de datos!<br><br>');
+    if ($xml->NumeroDeposito == '')
+        die('<br><br> :error en validaci&oacute;n de datos!<br><br>');
+    //echo "PagarRecibo<br><br>";
+    responseXML_PagarRecibo($xml->ConsecutivoTransaccion, $xml->CodigoAgencia, $xml->CodigoConvenio, $xml->NumeroServicio, $xml->MontoRecibo, $xml->Self, $xml->FechaTransaccion, $xml->NumeroDeposito);
+}
+
+function responseXML_PagarRecibo($ConsecutivoTransaccion, $CodigoAgencia, $CodigoConvenio, $IdentificacionCliente, $MontoRecibo, $Self, $FechaTransaccion, $NumeroDeposito) {
+    header ("Content-type: text/xml");
+    $CodigoRespuesta = 100; //error
+    $TipoBusqueda = "1"; // crear un nuevo tipo
+    $CodigoTransaccion = "550001";
+    $NumeroFactura = $Self;
+    //AAAAMMDDHH24MISS
+    date_default_timezone_set ('America/Costa_Rica');
+    $date_now = date('YmdHis');
+    //echo '<br><br>' .$date_now. '<br><br>'  ;
+
+    //This PHP Example code shows how to add one hour to a date object
+    $todayDate = date("YmdHis");// current date
+    $currentTime = time($todayDate); //Change date into time
+    //echo "<br>".$currentTime;
+    //Add one hour equavelent seconds 60*60
+    $timeAfterOneHour = $currentTime-60*60;
+    //echo "<br>".$timeAfterOneHour;
+    //echo "<br>Current Date and Time: ".date("YmdHis",$currentTime);
+    //echo "<br>Date and Time After adding one hour: ".date("YmdHis",$timeAfterOneHour);
+
+    $date_limit = date("YmdHis",$timeAfterOneHour);
+    $results = db_query("SELECT * FROM {users} WHERE mail = '" . $IdentificacionCliente . "'");
+
+    //echo '$date_limit:'.$date_limit.'|';
+
+    if ($results and ($FechaTransaccion > $date_limit)) {
+        //echo '$results:'.db_fetch_object($results)->name.'|';
+        $result = db_fetch_object($results);
+        //echo '<br>CodigoAgencia: '.$CodigoAgencia.'<br>email: '.$IdentificacionCliente.'<br>pass: '.$result->name.'---'.$result->pass.'|<br>';
+
+        $NombreCliente = $result->name;
+        $CodigoRubro = '';
+        $DescripcionRubro = '';
+        $ValorRubro = '';
+
+        if ($account = user_load(array('uid' => $result->uid, 'status' => 1))) {
+            //echo '$account:'.$account->name.'|';
+            /*if ($results) {
+                while ($result = db_fetch_object($results)) {
+                    $NombreCliente = $result->name;
+                    $DescripcionRespuesta = 'Paquetes disponibles';
+                }
+            }*/
+            //echo 'user_conectividad_logout: ' . user_conectividad_logout() . '|<br>';
+            $user = user_conectividad_login($result->name, $result->pass);
+            //echo '<br>resultado de logearse:' . $user->created . '<br><br>';
+            //global $user;
+            //echo '<br>resultado de logearse:' . $user->name . '<br><br>';
+
+
+
+            $node = node_load((int)$Self);
+            echo 'monto:'.$MontoRecibo.'resultado de agregar al carrito: '.$Self.' es: '.$node->title.'|<br>';
+
+            uc_cart_empty(uc_cart_get_id());
+
+            uc_cart_add_item((int)$Self);
+
+            //$uc_order = uc_order_load((int)$Self);
+
+            //echo 'resultado de agregar al carrito: '.uc_cart_add_item($Self).'|<br>';
+            //echo '$account: ' . $account->name . '*<br>';
+
+            $order_new = uc_order_new($account->uid);
+            $items = uc_cart_get_contents();
+
+            $order_new->products = $items;
+            uc_order_save($order_new);
+
+            //print_r ($order_new);
+
+            echo ' $order_new->order_id:' . $order_new->order_id;
+
+            $uc_order = uc_order_load($order_new->order_id);
+
+            //echo '$MontoRecibo:'.$MontoRecibo.'$uc_order->order_total:'.$uc_order->order_total;
+
+            //echo '$node'.$node;
+
+            //db_query("UPDATE {uc_orders} SET uid = %d WHERE order_id = %d", $order->uid, $order->order_id);
+
+            //Crear una orden con la info que viene del BCR
+
+            //Agregar al carrito el paquete que compre
+
+            //Registrarle el metodo de pago a usar es el BCR????
+
+            //echo '<br>order_id:'.$uc_order->order_id.'|payment_method:'.$uc_order->payment_method.'|order_total:'.$uc_order->order_total.'|<br>';
+
+            if ($uc_order->order_total == $MontoRecibo) {
+                //Registrar el pago con el BCR
+                uc_payment_enter($uc_order->order_id, 'bcr', $uc_order->order_total, $uc_order->uid, NULL, 'Pago mediante bcr');
+                //module_invoke_all('uc_checkout_complete', $order, $account);
+                //ca_pull_trigger('uc_checkout_complete', $order, $account);
+                //if (uc_payment_process('bcr', $uc_order->order_id, $uc_order->order_total)) {
+                    $result = uc_cart_complete_sale($uc_order);
+                    echo $result;
+                    $CodigoRespuesta = 101;
+                /*}
+                else{
+                    uc_order_delete((int)$uc_order->order_id);
+                    uc_cart_remove_item((int)$Self);
+                    uc_cart_empty(uc_cart_get_id());
+                    $CodigoRespuesta = 105;
+                }*/
+
+                /*
+                uc_payment_process('bcr', $uc_order->order_id, $uc_order->order_total);
+
+
+
+                uc_payment_enter($uc_order->order_id, 'bcr', $uc_order->order_total, $uc_order->uid, NULL, 'Pago mediante bcr');
+                //db_query("insert into {uc_up_payment_log} (uid, oid, points) values(%d, %d, %d)", $order->uid, $order->order_id, $points);
+
+                //if (uc_payment_process($uc_order->order_id, $uc_order->payment_method, $uc_order->order_total)) {
+                    $CodigoRespuesta = 101;
+                //}
+
+                // Empty that cart...
+                uc_cart_empty($Self);
+
+                // Clear our the session variables used to force the cart workflow.
+                unset($_SESSION['cart_order'], $_SESSION['do_complete'], $_SESSION['new_user']);
+
+                module_invoke_all('uc_checkout_complete', $order, $account);
+                ca_pull_trigger('uc_checkout_complete', $order, $account);
+
+                uc_order_mail('invoice', $message, $params);
+                uc_cart_complete_sale($uc_order);*/
+            }
+            else{
+                if ($uc_order->order_total < $MontoRecibo) {
+                    $CodigoRespuesta = 103;
+                }
+                else{
+                    $CodigoRespuesta = 104;
+                }
+                uc_order_delete((int)$uc_order->order_id);
+                uc_cart_remove_item((int)$Self);
+                uc_cart_empty(uc_cart_get_id());
+            }            
+            //echo 'resultado de agregar al carrito: '.uc_cart_add_item($Self).'|<br>';
+            //echo '$account: ' . $account->name . '*<br>';
+        }
+    }
+    else{
+        if ($FechaTransaccion < $date_limit) {
+            $CodigoRespuesta = 102;
+            uc_order_delete((int)$uc_order->order_id);
+            uc_cart_remove_item((int)$Self);
+            uc_cart_empty(uc_cart_get_id());
+        }                
+    }
+    switch ($CodigoRespuesta) {
+        case 100:
+            $DescripcionRespuesta = "Error de identificacion";
+            break;
+        case 101:
+            $DescripcionRespuesta = "Transaccion Exitosa!";
+            break;
+        case 102:
+            $DescripcionRespuesta = "Tiempo maximo expiro";
+            break;
+        case 103:
+            $DescripcionRespuesta = "Error en el monto de cancelacion, monto mayor";
+            break;
+        case 104:
+            $DescripcionRespuesta = "Error en el monto de cancelacion, monto menor";
+            break;
+        case 105:
+            $DescripcionRespuesta = "Error en el cancelar el paquete";
+            break;
+    }
+
+    $xml = '<?xml version="1.0"?> <TramaXML>
+            <TipoMensaje>01</TipoMensaje>
+            <CodigoRecaudador>00300</CodigoRecaudador>
+            <CodigoAgencia>'
+            . $CodigoAgencia .
+            '</CodigoAgencia><CodigoTransaccion>'
+            . $CodigoTransaccion .
+            '</CodigoTransaccion><ConsecutivoTransaccion>'
+            . $ConsecutivoTransaccion .
+            '</ConsecutivoTransaccion><CodigoConvenio>'
+            . $CodigoConvenio .
+            '</CodigoConvenio><TipoIdentificacionCliente>'
+            . $TipoIdentificacionCliente .
+            '</TipoIdentificacionCliente><IdentificacionCliente>'
+            . $IdentificacionCliente .
+            '</IdentificacionCliente><NombreCliente>'
+            . $NombreCliente .
+            '</NombreCliente><NumeroServicio>'
+            . $NumeroServicio .
+            '</NumeroServicio><PeriodoRecibo>'
+            . $PeriodoRecibo .
+            '</PeriodoRecibo><MontoRecibo>'
+            . $MontoRecibo .
+            '</MontoRecibo><ComisionServicio>'
+            . $ComisionServicio .
+            '</ComisionServicio><FechaVencimiento>'
+            . $FechaVencimiento .
+            '</FechaVencimiento><NumeroFactura>'
+            . $NumeroFactura .
+            '</NumeroFactura><Self>'
+            . $Self .
+            '</Self><FechaTransaccion>'
+            . $FechaTransaccion .
+            '</FechaTransaccion><CodigoRespuesta>'
+            . $CodigoRespuesta .
+            '</CodigoRespuesta><DescripcionRespuesta>'
+            . $DescripcionRespuesta .
+            '</DescripcionRespuesta>
+            <DetalleRubrosMontos>
+                <Rubro>
+                    <CodigoRubro>'
+                    . $CodigoRubro .
+                    '</CodigoRubro><DescripcionRubro>'
+                    . $DescripcionRubro .
+                    '</DescripcionRubro><ValorRubro>'
+                    . $ValorRubro .
+                    '</ValorRubro>
+                </Rubro>
+            </DetalleRubrosMontos>
+            <DetalleRubrosInformativos>
+                <Rubro>
+                    <CodigoRubro>'
+                    . $CodigoRubro .
+                    '</CodigoRubro><DescripcionRubro>'
+                    . $DescripcionRubro .
+                    '</DescripcionRubro><ValorRubro>'
+                    . $ValorRubro .
+                    '</ValorRubro>
+                </Rubro>
+             </DetalleRubrosInformativos>';
+    $xml .= '</TramaXML>';
+    echo $xml;
+
+}
+
+/*
+function check_ConsultarPago($xml, $method) {
+    if ($xml->CodigoRecaudador == '')
+        die('<br><br>error en CodigoRecaudador validaci&oacute;n de datos!<br><br>');
+    if ($xml->CodigoAgencia == '')
+        die('<br><br>error en CodigoAgencia validaci&oacute;n de datos!<br><br>');
+    if ($xml->ConsecutivoTransaccion == '')
+        die('<br><br>error en ConsecutivoTransaccion validaci&oacute;n de datos!<br><br>');
+    if ($xml->CodigoConvenio == '')
+        die('<br><br>error en CodigoConvenio validaci&oacute;n de datos!<br><br>');
+    if ($xml->Fecha == '')
+        die('<br><br>error en Fecha validaci&oacute;n de datos!<br><br>');
+    echo "ConsultarPago<br><br>";
+    responseXML_ConsultarPago($xml->ConsecutivoTransaccion);
+}
+
+function responseXML_ConsultarPago($ConsecutivoTransaccion) {
+    $CodigoRespuesta = 00;
+
+    $xml = '<?xml version="1.0"?> <TramaXML>
+                <CodigoRecaudador>00300</CodigoRecaudador>';
+
+    //ConsultarPago
+    $xml .= '<CodigoAgencia>'
+            . $CodigoAgencia .
+            '</CodigoAgencia><ConsecutivoTransaccion>'
+            . $ConsecutivoTransaccion.
+            '</ConsecutivoTransaccion><CodigoConvenio>'
+            . $CodigoConvenio .
+            '</CodigoConvenio><CodigoRespuesta>'
+            . $CodigoRespuesta .
+            '</CodigoRespuesta><DescripcionRespuesta>'
+            . $DescripcionRespuesta .
+            '</DescripcionRespuesta><IdentificacionCliente>'
+            . $IdentificacionCliente .
+            '</IdentificacionCliente><NombreCliente>'
+            . $NombreCliente .
+            '</NombreCliente>
+             <Servicios>
+                <Servicio>
+                    <NumeroServicio>'
+            . $NumeroServicio .
+            '</NumeroServicio>
+                     <DetalleRecibosPendientes>
+                        <Recibo>
+                            <PeriodoRecibo>'
+            . $PeriodoRecibo .
+            '</PeriodoRecibo><MontoRecibo>'
+            . $MontoRecibo .
+            '</MontoRecibo><FechaVencimiento>'
+            . $FechaVencimiento .
+            '</FechaVencimiento><NumeroFactura>'
+            . $NumeroFactura .
+            '</NumeroFactura><Self>'
+            . $Self .
+            '</Self><Nombre>'
+            . $Nombre .
+            '</Self><Descripcion>'
+            . $Descripcion .
+            '</Descripcion>
+                        </Recibo>
+                     </DetalleRecibosPendientes>
+                </Servicio>
+             </Servicios>
+             <DetalleRubrosInformativos>
+                <Rubro>
+                    <CodigoRubro>'
+            . $CodigoRubro .
+            '</CodigoRubro><DescripcionRubro>'
+            . $CodigoRubro .
+            '</DescripcionRubro><ValorRubro>'
+            . $CodigoRubro .
+            '</ValorRubro>
+                </Rubro>
+             </DetalleRubrosInformativos>';
+    $xml .= '</TramaXML>';
+    echo $xml;
+}
+*/
+
+function getCodigoRecaudador($str) {
+    $dato = split('<CodigoRecaudador>', $str);
+    return $dato[0];
+}
+
+function loadXML($data) {
+    $xml = @simplexml_load_string($data);
+    if (!is_object($xml))
+        throw new Exception('Error en la lectura del XML',1001);
+    return $xml;
+}
+
+function curPageURL() {
+    $pageURL = 'http';
+    if ($_SERVER["HTTPS"] == "on") {
+        $pageURL .= "s";
+    }
+    $pageURL .= "://";
+    if ($_SERVER["SERVER_PORT"] != "80") {
+        $pageURL .= $_SERVER["SERVER_NAME"].":".$_SERVER["SERVER_PORT"].$_SERVER["REQUEST_URI"];
+    } else {
+        $pageURL .= $_SERVER["SERVER_NAME"].$_SERVER["REQUEST_URI"];
+    }
+    return $pageURL;
+}
+
+/**
+ * Login a user using the specified credentials.
+ *
+ * Note this will transfer a plaintext password.
+ *
+ * @param $username
+ *   Username to be logged in.
+ * @param $password
+ *   Password, must be plain text and not hashed.
+ *
+ * @return
+ *   A valid session object.
+ */
+function user_conectividad_login($username, $password) {
+    //$results = db_query("SELECT * FROM {users} WHERE name = '" . $username . "' and pass='" . $password . "'" );
+    //$result = db_fetch_object($results);
+    global $user;
+
+    if ($user->uid) {
+        // user is already logged in
+        return services_error(t('Already logged in as !user.', array('!user' => $user->name)), 406);
+    }
+
+    //$user = user_conectividad_authenticate(array('name' => $username, 'pass' => $password));
+
+    $result = db_query("SELECT * FROM {users} WHERE name='".$username."' AND pass='". $password ."'");
+
+    if ($user = db_fetch_object($result)) {
+        $user = drupal_unpack($user);
+        //echo '$user->uid: ' . $user->created . '/';
+
+        $user->roles = array();
+        if ($user->uid) {
+          $user->roles[DRUPAL_AUTHENTICATED_RID] = 'authenticated user';
+        }
+        else {
+          $user->roles[DRUPAL_ANONYMOUS_RID] = 'anonymous user';
+        }
+        $result = db_query('SELECT r.rid, r.name FROM {role} r INNER JOIN {users_roles} ur ON ur.rid = r.rid WHERE ur.uid = %d', $user->uid);
+        while ($role = db_fetch_object($result)) {
+          $user->roles[$role->rid] = $role->name;
+        }
+        user_module_invoke('load', $user_info, $user);
+    }
+    else {
+        $user = FALSE;
+    }
+
+    return $user;
+
+    /*
+    if ($user->uid) {
+        // Regenerate the session ID to prevent against session fixation attacks.
+        sess_regenerate();
+        $array = array();
+        user_module_invoke('login', $array, $user);
+
+        $return = new stdClass();
+        $return->sessid = session_id();
+        $return->user = $user;
+
+        //echo '$user->uid: ' . $user->uid;
+
+        return $return;
+    }
+    session_destroy();
+    return services_error(t('Wrong username or password.'.$password.''), 401);*/
+}
+
+/**
+ * Logout the current user.
+ */
+function user_conectividad_logout() {
+    /*global $user;
+
+    watchdog('user', 'Session closed for %name.', array('%name' => $user->name));
+
+    // Destroy the current session:
+    session_destroy();
+    // Only variables can be passed by reference workaround.
+    $null = NULL;
+    user_module_invoke('logout', $null, $user);
+
+    // Load the anonymous user
+    $user = drupal_anonymous_user();
+
+    drupal_goto();
+    */
+    global $user;
+
+    if (!$user->uid) {
+        // User is not logged in
+        return services_error(t('User is not logged in.'), 406);
+    }
+
+    watchdog('user', 'Session closed for %name.', array('%name' => theme('placeholder', $user->name)));
+
+    // Destroy the current session:
+    session_destroy();
+    $array = array();
+    user_module_invoke('logout', $array, $user);
+
+    // Load the anonymous user
+    $user = drupal_anonymous_user();
+
+    return TRUE;
+}
+
+function user_conectividad_authenticate($name, $pass) {
+  global $user;
+
+  // Load the account to check if the e-mail is denied by an access rule.
+  // Doing this check here saves us a user_load() in user_login_name_validate()
+  // and introduces less code change for a security fix.
+  $account = user_conectividad_load(array('name' => $name, 'pass' => $pass, 'status' => 1));
+  if ($account && drupal_is_denied('mail', $account->mail)) {
+    form_set_error('name', t('The name %name is registered using a reserved e-mail address and therefore could not be logged in.', array('%name' => $account->name)));
+  }
+}
+
+function user_conectividad_load($user_info = array()) {
+  // Dynamically compose a SQL query:
+  $query = array();
+  $params = array();
+
+  if (is_numeric($user_info)) {
+    $user_info = array('uid' => $user_info);
+  }
+  elseif (!is_array($user_info)) {
+    return FALSE;
+  }
+
+  foreach ($user_info as $key => $value) {
+    if ($key == 'uid' || $key == 'status') {
+      $query[] = "$key = %d";
+      $params[] = $value;
+    }
+    else if ($key == 'pass') {
+      $query[] = "pass = '%s'";
+      $params[] = $value;
+    }
+    else {
+      $query[]= "LOWER($key) = LOWER('%s')";
+      $params[] = $value;
+    }
+  }
+  $result = db_query('SELECT * FROM {users} u WHERE '. implode(' AND ', $query), $params);
+
+  if ($user = db_fetch_object($result)) {
+    $user = drupal_unpack($user);
+
+    $user->roles = array();
+    if ($user->uid) {
+      $user->roles[DRUPAL_AUTHENTICATED_RID] = 'authenticated user';
+    }
+    else {
+      $user->roles[DRUPAL_ANONYMOUS_RID] = 'anonymous user';
+    }
+    $result = db_query('SELECT r.rid, r.name FROM {role} r INNER JOIN {users_roles} ur ON ur.rid = r.rid WHERE ur.uid = %d', $user->uid);
+    while ($role = db_fetch_object($result)) {
+      $user->roles[$role->rid] = $role->name;
+    }
+    user_module_invoke('load', $user_info, $user);
+  }
+  else {
+    $user = FALSE;
+  }
+
+  return $user;
+}
+
+
+?>

@@ -1,0 +1,4 @@
+name = "Productos Comprados"
+description = "Agrega un filtro en los views para los productos comprados"
+core = 6.x
+package = Filtros

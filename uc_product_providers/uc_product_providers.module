@@ -1,0 +1,80 @@
+<?php
+
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+/*
+ * FILTER PARA MOSTRAR SOLO LOS PRODUCTOS CON PROVEEDORES ACTIVOS
+ */
+
+function uc_product_providers_views_data() {
+    $data = array();
+
+    $data['product_providers']['table']['group'] = t('Providers');
+    $data['product_providers']['table']['join'] = array(
+        'node' => array(
+            'left_field' => 'nid',
+            'field' => 'nid',
+        ),
+        'uc_product_providers' => array(
+            'left_field' => 'id_provider',
+            'field' => 'id_provider',
+        ),
+    );
+
+    $data['product_providers']['id_provider'] = array(
+        'title' => t('Provider ID'),
+        'help' => t('The providers id.'),
+        'field' => array(
+            'handler' => 'views_handler_field_numeric',
+        ),
+        'filter' => array(
+            'handler' => 'views_handler_filter_numeric',
+        // TODO se podria hacer un handler para seleccionar solo ciertos proveedores con una lista de checks
+        ),
+    );
+
+
+
+    $data['uc_product_providers']['table']['group'] = t('Providers');
+    $data['uc_product_providers']['table']['base'] = array(
+        'field' => 'id_provider',
+        'title' => t('Provider'),
+            //'help' => t('Taxonomy terms are attached to nodes.'),
+    );
+    $data['uc_product_providers']['table']['join'] = array(
+        'product_providers' => array(
+            'left_field' => 'id_provider',
+            'field' => 'id_provider',
+        ),
+        'node' => array(
+            'left_table' => 'product_providers',
+            'left_field' => 'id_provider',
+            'field' => 'id_provider',
+        ),
+    );
+
+    $data['uc_product_providers']['active'] = array(
+        'title' => t('Active Providers'),
+        'help' => t('If the providers are active or not.'),
+        'field' => array(
+            'handler' => 'views_handler_field_numeric',
+        ),
+        'filter' => array(
+            'handler' => 'views_handler_filter_boolean_operator',
+        ),
+    );
+
+    $data['uc_product_providers']['name'] = array(
+        'title' => t('Providers name'), // The item it appears as on the UI,
+        'field' => array(
+            'help' => t('Name of the providers.'),
+            'handler' => 'views_handler_field',
+            'click sortable' => TRUE,
+        ),
+    );
+
+    return $data;
+}

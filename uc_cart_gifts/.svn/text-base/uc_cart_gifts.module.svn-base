@@ -1,0 +1,41 @@
+<?php
+
+/**
+ * Implementation of hook_form_alter().
+ */
+function uc_cart_gifts_form_alter(&$form, $form_state, $form_id) {
+    switch ($form_id) {
+        case 'user_admin_settings':
+            $form['email']['no_approval_required_gift'] = array(
+                '#type' => 'fieldset',
+                '#title' => t('Welcome, no approval required with a gift'),
+                '#collapsible' => TRUE,
+                '#collapsed' => (variable_get('user_register', 1) != 1),
+                '#description' => t('Customize welcome e-mail messages sent to new members upon registering, when no administrator approval is required.') . ' ' . $email_token_help
+            );
+            $form['email']['no_approval_required_gift']['user_mail_register_no_approval_required_gift_subject'] = array(
+                '#type' => 'textfield',
+                '#title' => t('Subject'),
+                '#default_value' => _uc_cart_gifts_mail_text('register_no_approval_required_gift_subject'),
+                '#maxlength' => 180,
+            );
+            $form['email']['no_approval_required_gift']['user_mail_register_no_approval_required_gift_body'] = array(
+                '#type' => 'textarea',
+                '#title' => t('Body'),
+                '#default_value' => _uc_cart_gifts_mail_text('register_no_approval_required_gift_body'),
+                '#rows' => 15,
+            );
+            break;
+    }
+}
+
+function _uc_cart_gifts_mail_text($key, $language = NULL, $variables = array()) {
+    switch ($key) {
+        case 'register_no_approval_required_gift_subject':
+            return t('Account details for !username at !site', $variables, $langcode);
+        case 'register_no_approval_required_gift_body':
+            return t("!username,\n\nYou has a gift at !site, to access it we have created a temporary user account. You may now log in to !login_uri using the following username and password:\n\nusername: !username\npassword: !password\n\nYou may also log in by clicking on this link or copying and pasting it in your browser:\n\n!login_url\n\nThis is a one-time login, so it can be used only once.\n\nAfter logging in, you will be redirected to !edit_uri so you can change your password.\n\n\n--  !site team", $variables, $langcode);
+        default:
+            break;
+    }
+}

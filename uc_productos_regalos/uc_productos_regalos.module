@@ -1,0 +1,504 @@
+<?php
+
+session_start();
+//$Id$
+
+/**
+  uc_productos_regalos.module
+
+  Programador: Leonardo Ramírez Salazar
+
+ */
+function uc_productos_regalos_perm() {
+    return array('productos regalos');
+}
+
+function uc_productos_regalos_menu() {
+
+    $items['regalos_add'] = array(
+        'title' => 'regalos_add',
+        'access callback' => 'uc_productos_regalos_perm',
+        'page callback' => 'uc_productos_regalos_add_get_POST',
+        'page arguments' => array(1),
+        'type' => MENU_CALLBACK,
+    );
+
+    $items['regalos_del'] = array(
+        'title' => 'regalos_del',
+        'access callback' => 'uc_productos_regalos_perm',
+        'page callback' => 'uc_productos_regalos_del_get_POST',
+        'page arguments' => array(2),
+        'type' => MENU_CALLBACK,
+    );
+
+    return $items;
+}
+
+function uc_productos_regalos_ca_predicate() {
+
+    $configurations['uc_productos_regalos_predicado'] = array(
+        '#title' => t('uc_productos_regalos_predicado'),
+        '#class' => 'uc_productos_regalos_predicado',
+        '#trigger' => 'uc_order_status_update',
+        '#status' => 1,
+        '#conditions' => array(
+            '#operator' => 'AND',
+            '#conditions' => array(
+                array(
+                    '#name' => 'uc_order_status_condition',
+                    '#title' => t('If the order status is completed.'),
+                    '#argument_map' => array(
+                        'order' => 'updated_order',
+                    ),
+                    '#settings' => array(
+                        'order_status' => 'completed',
+                    ),
+                ),
+            ),
+        ),
+        '#actions' => array(
+            array(
+                '#name' => 'action_uc_productos_regalos_limpiar_regalos',
+                '#title' => t('erase the temp gift table.'),
+                '#argument_map' => array(
+                    'order' => 'updated_order',
+                ),
+            ),
+        ),
+    );
+
+    $order_args = array(
+        'order' => 'order',
+        'expiration' => 'expiration',
+    );
+    return $configurations;
+}
+
+function uc_productos_regalos_ca_action() {
+
+    $actions['action_uc_productos_regalos_limpiar_regalos'] = array(
+        '#title' => t('Erase temporal gift table.'),
+        '#category' => t('uc_productos_regalos_predicado'),
+        '#callback' => 'uc_productos_regalos_eliminar_temporal',
+        '#arguments' => array(
+            'order' => array(
+                '#entity' => 'uc_order',
+                '#title' => t('Order'),
+            ),
+        ),
+    );
+
+    return $actions;
+}
+
+function uc_productos_regalos_eliminar_temporal($order) {
+
+    global $user;
+    db_query("DELETE FROM {uc_productos_regalos_temporal} WHERE uid = %d", $user->uid);
+}
+
+function uc_productos_regalos_order($op, $order) {
+
+    switch ($op) {
+        case 'new':
+            $order_id = $order->order_id;
+
+            global $user;
+            $consulta = db_query("SELECT * FROM {uc_productos_regalos_temporal} WHERE uid = %d", $user->uid);
+            //db_query("DELETE FROM {uc_productos_regalos} WHERE uid = %d", $user->uid);
+
+            while ($data = db_fetch_object($consulta)) {
+
+                $uid = $data->uid;
+                $nid = $data->nid;
+                $mail = $data->mail;
+
+                db_query("INSERT INTO {uc_productos_regalos} (nid, uid, mail, order_id) VALUES (%d, %d, '%s', %d)", $nid, $uid, $mail, $order_id);
+            }
+
+            break;
+    }
+}
+
+function uc_productos_regalos_add_get_POST() {
+
+    if (isset($_POST['correo']) && isset($_POST['nid'])) {
+
+        global $user;
+        $usuario = $user->uid;
+        $correo = $_POST['correo'];
+        $nid = $_POST['nid'];
+
+        $cantidad = db_result(db_query("SELECT qty FROM {uc_cart_products} WHERE cart_id = %d AND nid = %d", $user->uid, $nid));
+        ++$cantidad;
+
+        $existe = db_result(db_query("SELECT mail FROM {uc_productos_regalos_temporal} WHERE mail = '%s' AND nid = %d AND uid = %d ", $correo, $nid, $usuario));
+
+        if (!$existe) {
+            db_query("UPDATE {uc_cart_products} SET qty = %d WHERE cart_id = %d AND nid = %d", $cantidad, $user->uid, $nid);
+            db_query("INSERT INTO {uc_productos_regalos_temporal} (nid, uid, mail) VALUES (%d, %d, '%s')", $nid, $usuario, $correo);
+        }
+
+      
+    } else {
+       
+    }
+}
+
+function uc_productos_regalos_del_get_POST() {
+
+    if (isset($_POST['correo']) && isset($_POST['nid'])) {
+
+        global $user;
+        $usuario = $user->uid;
+        $correo = $_POST['correo'];
+        $nid = $_POST['nid'];
+
+        $consulta = db_query("SELECT * FROM {uc_productos_regalos_temporal} WHERE nid = %d AND uid = %d", $nid, $usuario);
+        $cantidad_correos = 0;
+        while ($data = db_fetch_object($consulta)) {
+            $cantidad_correos++;
+        }
+        
+        if ($cantidad_correos > 1) {
+
+            $cantidad = db_result(db_query("SELECT qty FROM {uc_cart_products} WHERE cart_id = %d AND nid = %d", $user->uid, $nid));
+            --$cantidad;
+            db_query("UPDATE {uc_cart_products} SET qty = %d WHERE cart_id = %d AND nid = %d", $cantidad, $user->uid, $nid);
+
+            db_query("DELETE FROM {uc_productos_regalos_temporal} WHERE nid= %d AND mail= '%s'", $nid, $correo);
+        }
+
+     
+    } else {
+      
+    }
+}
+
+function uc_productos_regalos_form_alter(&$form, &$form_state, $form_id) {
+
+    if ($form_id == 'uc_cart_view_form') {
+        drupal_add_js(drupal_get_path('module', 'uc_productos_regalos') . '/uc_productos_regalos.js');
+        _uc_productos_regalos__uc_cart_view_form__form_alter($form, $form_state);
+        
+    }
+
+    if (strpos($form_id, 'uc_product_add_to_cart_form_') === 0) {
+
+        $items = uc_cart_get_contents();
+        $flag = 0;
+
+        foreach ($items as &$item) {
+
+            if ('uc_product_add_to_cart_form_' . $item->nid == $form_id) {
+                $flag = 1;
+            }
+        }
+        if ($flag) {
+
+            $form['#submit'] = array('uc_products_regalos_duplicados_form_submit');
+        }
+    }
+}
+
+function uc_products_regalos_duplicados_form_submit($form, &$form_state) {
+
+    drupal_set_message('El producto fue introducido exitosamente');
+    $form_state['redirect'] = 'cart';
+}
+
+/*
+  function uc_products_regalos_duplicados ($form, &$form_state){
+
+  drupal_set_message('El producto fue introducido exitosamente');
+  }
+ */
+
+function uc_productos_regalos_tapir_table_alter(&$data, $table_id) {
+
+    if ($table_id == 'uc_cart_view_table') {
+        
+        $data['#columns']['remove'] = array(
+            'cell' => array(
+                'data' => "<img src='sites/all/themes/titi_theme/images/menitos.png' alt='' />" ,
+            ),
+            'weight' => 0,
+        );
+        
+        $data['#columns']['image'] = array(
+            'cell' => array(
+                'data' => t('Products'),
+                'colspan' => 2,
+            ),
+            'weight' => 1,
+        );
+        
+         $data['#columns']['desc'] = array(
+            'cell' => array(
+                'data' => t('Products'),
+                'style' => "display:none",
+            ),
+            'weight' => 2,
+        );
+         
+        $data['#columns']['precio_tp'] = array(
+            'cell' => t(' <div class="tp_cart">'. t('Price') . '</div>'),
+            'weight' => 3,
+        );
+        
+        $data['#columns']['precio_moned'] = array(
+            'cell' => t('Price Currency'),
+            'weight' => 4,
+        );
+
+        $data['#columns']['?'] = array(
+            'cell' => t('<div class="int_cart"></div>'),
+            'weight' => 5,
+        );
+        
+
+        //$data['#columns']['remove']['#cell_attributes']= array("class" => "Prueba");
+
+        $data['#columns']['qty']['weight'] = 6;
+        $data['#columns']['gift'] = array(
+            'cell' => array( 
+                'data' => t('Send to'),
+                //'colspan' => 10,
+            ),
+            'weight' => 7,
+        );
+        $data['#columns']['total_tp'] = array(
+            'cell' => t(' <div class="tp_cart">Total</div>'),
+            'weight' => 9,
+        );
+
+        $data['#columns']['total']['weight'] = 9;
+        foreach (element_children($data) as $i) {
+            $data['items'][$i]['precio_tp']['#cell_attributes'] = array('class' => 'precio_tp');
+            $data['items'][$i]['precio_moned']['#cell_attributes'] = array('class' => 'precio_moned');
+            $data['items'][$i]['?']['#cell_attributes'] = array('class' => '?');
+            $data['items'][$i]['gift']['#cell_attributes'] = array('class' => 'gift');
+            $data['items'][$i]['total_tp']['#cell_attributes'] = array('class' => 'total_tp');
+        }
+    }
+}
+
+/*
+
+  function uc_productos_regalos_view_form_submit ($form, &$form_state){
+
+  // Remove the cart order variable if the customer came here during checkout.
+  if (isset($_SESSION['cart_order'])) {
+  unset($_SESSION['cart_order']);
+  }
+
+  // Update the items in the shopping cart based on the form values.
+  uc_cart_update_item_object((object)$form_state['values']);
+
+  // Specify the appropriate redirect based on the button used to submit.
+  switch ($form_state['values']['op']) {
+  // Continue shopping button.
+  case $form_state['values']['continue_shopping_text']:
+  $form_state['redirect'] = uc_cart_continue_shopping_url();
+  break;
+
+  // Update cart button.
+  case t('Update cart'):
+  // No redirect.  Just display a message and preserve the last URL.
+  drupal_set_message(t('Your cart has been updated.'));
+  break;
+
+  // Checkout button.
+  case t('Checkout'):
+  $form_state['redirect'] = variable_get('uc_checkout_enabled', TRUE) ? 'cart/checkout' : 'cart';
+  break;
+  }
+
+  }
+ */
+
+function uc_productos_regalos_view_cart($item) {
+    //drupal_set_message("uc_productos_regalos_view_cart: $item");
+}
+
+function uc_productos_regalos_cart_item($op, $item) {
+    global $user;
+
+    switch ($op) {
+        case 'remove':
+            db_query("DELETE FROM {uc_productos_regalos_temporal} WHERE uid = %d AND nid = %d", $user->uid, $item->nid);
+            break;
+    }
+}
+
+function _uc_productos_regalos__uc_cart_view_form__form_alter(&$form, &$form_state) {
+
+    global $user;
+    $cart_item_content = uc_cart_get_contents($_SESSION['cart_order']);
+    foreach (element_children($form['items']) as $i) {
+        /* $form['items'][$i]['precio_tp']['#cell_attributes'] = array('class' => 'precio_tp');
+          $form['items'][$i]['precio_moned']['#cell_attributes'] = array('class' => 'precio_moned');
+          $form['items'][$i]['?']['#cell_attributes'] = array('class' => '?');
+          $form['items'][$i]['gift']['#cell_attributes'] = array('class' => 'gift');
+          $form['items'][$i]['total_tp']['#cell_attributes'] = array('class' => 'total_tp'); */
+          //drupal_set_message('<pre>'. print_r($form['items'][$i], TRUE) .'</pre>');
+         
+        // PRINCIPIO
+        $product_id = $form['items'][$i]['nid']["#value"];
+        
+        if ($product_id > 0) {
+            $consulta = db_query("SELECT mail FROM {uc_productos_regalos_temporal} WHERE uid = %d AND nid = %d", $user->uid, $product_id);
+            $numero_filas = 0;
+            while ($data = db_fetch_object($consulta)) {
+                $numero_filas++;
+            }
+            
+            $consulta = db_query("SELECT mail FROM {uc_productos_regalos_temporal} WHERE uid = %d AND nid = %d", $user->uid, $product_id);
+            $lista = '';
+            $ruta = "sites/all/themes/titi_theme/images/menitos.png";
+            
+           // drupal_set_message($numero_filas);
+           // drupal_set_message($product_id);
+            
+            //significa que ya hay direcciones de regalo cargadas de un add anterior , nos disponemos a cargarlos
+            if ($numero_filas > 0) {
+                if($user->uid){
+                    while ($data = db_fetch_object($consulta)) {
+                        if ($data->mail) { // se muestra contendido si tiene mail si no ni hace nada
+                            if ($numero_filas == 1) {  //si hay una sola fila entonces se despliega sin el menos de eliminar
+                                $lista = $lista . "<li class=\"" . $product_id . "\"><span class=\"nombre\">" . $data->mail . "</span><span class =\"eliminar\" style = \"display: none;\" > <img src=\"" . $ruta . "\"> </span> </li>";
+                            } else {
+                                $lista = $lista . "<li class=\"" . $product_id . "\"><span class=\"nombre\">" . $data->mail . "</span><span class =\"eliminar\"> <img src=\"" . $ruta . "\"> </span> </li>";
+                            }
+                        }
+                    }
+                }
+            } else {
+                
+                if (!$user->uid){
+                    $lista = "<span>Debe ser un usuario registrado para enviar</span>";
+                }
+                
+                else{
+                    $correo = $user->mail;
+                    db_query("INSERT INTO {uc_productos_regalos_temporal} (nid, uid, mail) VALUES (%d, %d, '%s')", $product_id, $user->uid, $correo);
+                    //$lista = "<li>".$correo." <a href= #><img src=\"".$ruta."\"> </a> </li>";
+                    $lista = "<li class=\"" . $product_id . "\"><span class=\"nombre\">" . $correo . "</span><span class =\"eliminar\" style = \"display: none;\"> <img src=\"" . $ruta . "\"> </span></li>";
+                }
+            }
+            if ($user->uid){
+                $form['items'][$i]['gift'] = array(
+                    'mail' => array(
+                        '#value' => "<ul class='ul_gift' id= " . $product_id . ">" . $lista . "</ul>"
+                    ),
+                    'field' => array(
+                        '#type' => 'textfield',
+                        '#size' => 20,
+                        '#maxlength' => 100,
+                        '#value' => ' ',
+                        '#attributes' => array('class' => 'txt_gift', 'id' => $product_id ),
+                    ),
+                   
+                );
+            }
+            else{
+                $form['items'][$i]['gift'] = array(
+                    'mail' => array(
+                        '#value' => $lista
+                    ),/*
+                     '#cell_attributes' => array(
+                        'colspan' => 10,
+                    ),*/
+                );
+            }
+
+            $node = node_load($product_id);
+            $userpoints_ubercart_payment = db_result(db_query("SELECT value FROM {variable} WHERE name='userpoints_ubercart_payment'"));
+            //s:5:"18.66";
+            $precio_puntos = split('"', $userpoints_ubercart_payment);
+            $titi_pts_valor = $precio_puntos[1];
+            
+            $precio_points_norm = $node->sell_price * $titi_pts_valor;
+            $precio_points_desc = ceil($form['items'][$i]['#total'] * $titi_pts_valor); 
+            if ($precio_points == '') {
+                $precio_points = 0;
+            }
+            $context = array(
+                'revision' => 'formatted-original',
+                'type' => 'amount',
+            );
+
+            $form['items'][$i]['precio_tp']['#value'] = "<span> precio tp </span>";
+            $form['items'][$i]['precio_moned']['#value'] = "<span> precio moneda </span>";
+            $form['items'][$i]['?']['#value'] = "<span> ??? </span>";
+            $form['items'][$i]['total_tp']['#value'] = "<span> total tp </span>";
+            $form['items'][$i]['precio_tp']['#type'] = "value";
+            $form['items'][$i]['precio_tp'] = array(
+                'precio' => array(
+                    '#value' => "<div class='losMonosDelCart'>" . $precio_points_norm . "</div>",
+                ),
+                '#cell_attributes' => array(
+                    'class' => 'PrecioTitiPuntos',
+                ),
+            );
+            $form['items'][$i]['precio_moned']['#type'] = "value";
+            $elPrecioEnMOneda = uc_currency_format_just_amount($node->sell_price);
+            $form['items'][$i]['precio_moned'] = array(
+                '#value' => "<span class='uc-price' title='" . $elPrecioEnMOneda . "'>" . uc_currency_format($node->sell_price) . "</span>",
+                '#cell_attributes' => array(
+                    'class' => 'PrecioMoneda',
+                ),
+            );
+            $form['items'][$i]['?']['#type'] = "value";
+
+            /* TODO: hay que arreglar que sea con la logica de paises */
+
+            $objeto = uc_taxes_rate_load(2);
+
+            /* Final de charal */
+
+            $exentoGrabado = "<span class='exen'></span>";
+            if ($objeto) {
+                if (uc_taxes_apply_item_tax($cart_item_content[$i], $objeto) > 0) {
+                    $exentoGrabado = "<span class='grab'></span>";
+                }
+            }
+            $form['items'][$i]['?'] = array(
+                '#value' => $exentoGrabado
+            );
+            $form['items'][$i]['total_tp']['#type'] = "value";
+            $precioTotalPoints = 1;
+            if ($numero_filas > 0) {
+                $precioTotalPoints = $precio_points_desc * $numero_filas;
+            } else {
+                $precioTotalPoints = $precio_points_desc;
+            }
+            
+            $form['items'][$i]['total_tp'] = array(
+                'precio' => array(
+                    '#value' => "<div class='losMonosDelCart'>" . $precioTotalPoints . "</div>"
+                ),
+                '#cell_attributes' => array(
+                    'class' => 'TotalTitiPuntos',
+                ),
+            );
+            
+            
+            $form['items'][$i]['qty']['#attributes'] = array('readonly' => 'readonly');
+        }
+    }
+    if(!($user->uid)){
+        $form['checkout'] = array(
+            '#type' => 'submit',
+            '#value' => 'Registrese',
+            '#submit' => array('uc_products_regalos_registrese_submit'),
+        );
+        
+    }
+}
+
+
+function uc_products_regalos_registrese_submit($form, &$form_state){
+    
+    $form['#redirect'] = url('user/register', array('absolute' => true));
+}

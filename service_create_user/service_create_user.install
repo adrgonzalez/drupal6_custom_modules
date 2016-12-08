@@ -1,0 +1,44 @@
+<?php
+
+/**
+ * Implementation of hook_install()
+ */
+function service_create_user_install() {
+    drupal_install_schema('service_create_user');
+}
+
+/**
+ * Implementation of hook_schema().
+ */
+function service_create_user_schema() {
+
+    $schema['users_promotional'] = array(
+        'description' => "List of the user",
+        'fields' => array(
+            'uid' => array(
+                'type' => 'int',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+                'default' => 0,
+                'description' => 'Unique identifier for user',
+            ),
+            'code' => array(
+                'type' => 'varchar',
+                'length' => 255,
+                'not null' => TRUE,
+                'default' => '0',
+                'description' => 'name of the user',
+            ),
+            'active' => array(
+                'type' => 'int',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+                'default' => 0,
+                'description' => 'enable/disable',
+            ),
+        ),
+    );
+
+    return $schema;
+}
+?>

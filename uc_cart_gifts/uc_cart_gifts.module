@@ -1,0 +1,410 @@
+<?php
+
+/**
+ * Implementation of hook_form_alter().
+ */
+function uc_cart_gifts_form_alter(&$form, $form_state, $form_id) {
+    switch ($form_id) {
+        case 'user_admin_settings':
+            $form['email']['no_approval_required_gift'] = array(
+                '#type' => 'fieldset',
+                '#title' => t('Welcome, no approval required with a gift'),
+                '#collapsible' => TRUE,
+                '#collapsed' => (variable_get('user_register', 1) != 1),
+                '#description' => t('Customize welcome e-mail messages sent to new members upon registering, when no administrator approval is required.') . ' ' . $email_token_help
+            );
+            $form['email']['no_approval_required_gift']['user_mail_register_no_approval_required_gift_subject'] = array(
+                '#type' => 'textfield',
+                '#title' => t('Subject'),
+                '#default_value' => _uc_cart_gifts_mail_text('register_no_approval_required_gift_subject'),
+                '#maxlength' => 180,
+            );
+            $form['email']['no_approval_required_gift']['user_mail_register_no_approval_required_gift_body'] = array(
+                '#type' => 'textarea',
+                '#title' => t('Body'),
+                '#default_value' => _uc_cart_gifts_mail_text('register_no_approval_required_gift_body'),
+                '#rows' => 15,
+            );
+            break;
+    }
+}
+
+function _uc_cart_gifts_mail_text($key, $language = NULL, $variables = array()) {
+    switch ($key) {
+        case 'register_no_approval_required_gift_subject':
+            return t('Account details for !username at !site', $variables, $langcode);
+        case 'register_no_approval_required_gift_body':
+            return t("!username,\n\nYou has a gift at !site, to access it we have created a temporary user account. You may now log in to !login_uri using the following username and password:\n\nusername: !username\npassword: !password\n\nYou may also log in by clicking on this link or copying and pasting it in your browser:\n\n!login_url\n\nThis is a one-time login, so it can be used only once.\n\nAfter logging in, you will be redirected to !edit_uri so you can change your password.\n\n\n--  !site team", $variables, $langcode);
+        default:
+            break;
+    }
+}
+
+/**
+ * Implementation of hook_ca_action().
+ */
+function uc_cart_gifts_ca_action() {
+
+    $actions['uc_cart_gifts_order_renew'] = array(
+        '#title' => t('Register purchased and gifted files.'),
+        '#category' => t('renewal'),
+        '#callback' => 'uc_cart_gifts_action_order_renew',
+        '#arguments' => array(
+            'order' => array(
+                '#entity' => 'uc_order',
+                '#title' => t('Order'),
+            ),
+        ),
+    );
+
+    // Send an email to an order with a file expiration
+    $actions['uc_cart_gifts_order_with_gifts_email'] = array(
+        '#title' => t('Send gifts emails.'),
+        '#category' => t('Notification'),
+        '#callback' => 'uc_cart_gifts_action_order_with_gifts_email',
+        '#arguments' => array(
+            'order' => array(
+                '#entity' => 'uc_order',
+                '#title' => t('Order'),
+            ),
+            'expiration' => array(
+                '#entity' => 'uc_cart_gifts_expiration',
+                '#title' => t('File expiration'),
+            ),
+        ),
+    );
+
+    return $actions;
+}
+
+/**
+ * Implementation of hook_ca_predicate().
+ */
+function uc_cart_gifts_ca_predicate() {
+
+    // Renew all the files on an order when the status matches what's set in the files admin settings.
+    $configurations['uc_cart_gifts_renewal'] = array(
+        '#title' => t('Set files downloads for gift and user'),
+        '#description' => t('Register purchased and gifted files if the order status matches.'),
+        '#class' => 'renewal',
+        '#trigger' => 'uc_order_status_update',
+        '#status' => 1,
+        '#conditions' => array(
+            '#operator' => 'AND',
+            '#conditions' => array(
+                array(
+                    '#name' => 'uc_order_status_condition',
+                    '#title' => t('If the order status is completed.'),
+                    '#argument_map' => array(
+                        'order' => 'updated_order',
+                    ),
+                    '#settings' => array(
+                        'order_status' => 'completed',
+                    ),
+                ),
+            ),
+        ),
+        '#actions' => array(
+            array(
+                '#name' => 'uc_cart_gifts_order_renew',
+                '#title' => t('Register purchased and gifted files.'),
+                '#argument_map' => array(
+                    'order' => 'updated_order',
+                ),
+            ),
+        ),
+    );
+
+    $order_args = array(
+        'order' => 'order',
+        'expiration' => 'expiration',
+    );
+
+    $configurations['uc_cart_gifts_notify_gifts_grant_trigger'] = array(
+        '#title' => t('Notify gifts reciever when a file is gifted'),
+        '#description' => t('Notify the gifts reciever when they have had a file granted on their user.'),
+        '#class' => 'notification',
+        '#trigger' => 'uc_cart_gifts_notify_gifts_grant',
+        '#status' => 1,
+        '#actions' => array(
+            array(
+                '#name' => 'uc_cart_gifts_order_with_gifts_email',
+                '#title' => t('Send an e-mail to the gifts recievers'),
+                '#argument_map' => $order_args,
+                '#settings' => array(
+                    'from' => uc_store_email_from(),
+                    'subject' => "Ud tiene un regalo de [user-name]", //t("You have a gift from [user-name]"),
+                    //'message' => t("[site-logo]\nUsted tiene un regalo de <strong>[user-name]</strong> en <strong>[store-name]</strong>. Usted puede acceder a ellos con el siguiente enlace (s):\n\n[file-downloads]\n\nDespués descargar estos archivos de estos enlaces han caducado. Si usted necesita descargar los archivos de nuevo, usted puede acceder en [site-login] and visit the \"My Account\" section of the site.\n\nThanks again, \n\n[store-name]\n[site-slogan]"),
+                    //'message' => t("<div style='text-align:center; margin: 0 auto;'><table style='margin: 0 auto; width:560px;'><tr><td><tr width='560px' height='20px'><td colspan='2'><img src='http://www.titionline.com/sites/all/themes/titi_theme/images/mail_borde.jpg'/></td></tr><tr  width='560px'  height='540px'><td width='387px' height='100%' style='position:absolute; padding-left:20px; font-family: Arial; margin-right:-10px;  font-size:12px; font-weight:bold; color:#565962;'><p  style='text-align:right; margin-top:50px;'><a href='http://www.titionline.com'><img src='http://www.titionline.com/sites/all/themes/titi_theme/images/mail_logo.jpg' border='0' /></a></p><p style='color:#a1a1a1; font-size:24px; margin-bottom:40px;'>¡FELICIDADES!</p><p style='margin: 10px auto; font-size:112px; color:#f26522 !important'>¡[user-name] te ha enviado un regalo!</p><p style='text-align:left !important; margin-top:55px; color:#565962;'>Accesa al siguiente enlase(s):</p><p style='text-align:left !important; color:#00aeef !important; font-size:11px;'><a href='[file-downloads]' style='color:#00aeef !important;' title='Descarga' target='_blank'>[file-downloads]</a></p><p style='text-align:left !important; font-size:11px; margin-bottom:50px; color:#565962;'> *El enlace expira una vez descargado el (los) archivo(s).</p><p style='margin: 10px auto; color:#565962;'>Si necesita descargarlo de nuevo puede ingresar a:<p><p style='margin: 10px auto; font-size:11px; color:#f26522 !important;'><a href='http://www.titionline.com/user' title='Titi Online' target='_blank' stye='color:#f26522 !important;'>http://www.titionline.com/user</a> y visita la sección \"Mi Cuenta\".</p><p style='color:#565962; font-size:18px; margin: 15px auto;'>¡Muchas Gracias!</p></td><td width='173px' height='100%'><img src='http://www.titionline.com/sites/all/themes/titi_theme/images/mail_canasta.png'  border='0' /></td></tr><tr width='560px' height='50px'><td colspan='2'><a href='http://www.titionline.com'><img src='http://www.titionline.com/sites/all/themes/titi_theme/images/mail_naranja.png' border='0' /></a></td></tr></td></tr></table></div>"),
+                    'message' => t("<div style='text-align:center; margin: 0 auto;'><table style='margin: 0 auto; width:560px;'><tr><td><tr width='560px' height='20px'><td colspan='2'><img src='http://www.titionline.com/sites/all/themes/titi_theme/images/mail_borde.jpg'/></td></tr><tr  width='560px'  height='540px'><td width='387px' height='100%' style='position:absolute; padding-left:20px; font-family: Arial; margin-right:-10px;  font-size:12px; font-weight:bold; color:#565962;'><p  style='text-align:right; margin-top:50px;'><a href='http://www.titionline.com'><img src='http://www.titionline.com/sites/all/themes/titi_theme/images/mail_logo.jpg' border='0' /></a></p><p style='color:#a1a1a1; font-size:24px; margin:0 50px 50px 50px;'>¡FELICIDADES!</p><center>¡[user-name] te ha enviado un regalo!</center><p style='text-align:left !important; margin-top:55px;'>Accesa al siguiente enlace(s):</p><p style='text-align:left !important; color:#00aeef !important; font-size:11px;'><a href='[file-downloads]' title='Descarga' target='_blank'>[file-downloads]</a></p><p style='text-align:left !important; font-size:11px; margin-bottom:50px;'> *El enlace expira una vez descargado el (los) archivo(s).</p><p style='margin: 10px auto;'>Si necesita descargarlo de nuevo puede ingresar a:<p><p style='margin: 10px auto; font-size:11px; color:#f26522 !important;'><a href='http://www.titionline.com/user' title='Titi Online' target='_blank'>http://www.titionline.com/user</a> y visita la sección \"Mi Cuenta\".</p><p style='color:#565962; font-size:18px; margin: 10px auto;'>¡Muchas Gracias!</p></td><td width='173px' height='100%'><img src='http://www.titionline.com/sites/all/themes/titi_theme/images/mail_canasta.png'  border='0' /></td></tr><tr width='560px' height='50px'><td colspan='2'><a href='http://www.titionline.com'><img src='http://www.titionline.com/sites/all/themes/titi_theme/images/mail_naranja.png' border='0' /></a></td></tr></td></tr></table></div>"),
+                    'format' => 3,
+                ),
+            ),
+        ),
+    );
+
+    return $configurations;
+}
+
+/**
+ * Implementation of hook_ca_trigger().
+ */
+function uc_cart_gifts_ca_trigger() {
+
+    $args = array(
+        'order' => array(
+            '#entity' => 'uc_order',
+            '#title' => t('Order'),
+        ),
+        'expiration' => array(
+            '#entity' => 'uc_file_expiration',
+            '#title' => t('File expiration'),
+        ),
+    );
+
+    $triggers['uc_cart_gifts_notify_gifts_grant'] = array(
+        '#title' => t('E-mail for granted files for gifts'),
+        '#category' => t('Notification'),
+        '#arguments' => $args,
+    );
+
+    return $triggers;
+}
+
+function uc_cart_gifts_action_order_with_gifts_email($order, $files_expirations, $settings) {
+
+    drupal_set_message('uc_cart_gifts_action_order_with_gifts_email');
+
+    // TODO
+    foreach ($files_expirations as $recieverUid => $file_expiration) {
+        if ($order->uid == $recieverUid) {
+            ca_pull_trigger('uc_file_notify_grant', $order, $file_expiration);
+        } else {
+            $account = user_load($recieverUid);
+
+            // Token replacements for the subject and body
+            $settings['replacements'] = array(
+                'global' => NULL,
+                //'order' => $order,
+                'user' => $account,
+                'uc_file' => $file_expiration,
+            );
+
+            // Replace tokens and parse recipients.
+            $email = $account->mail;
+            $sent = drupal_mail('uc_order', 'action-mail', $email, uc_store_mail_recipient_language($email), $settings, $settings['from']);
+
+            if (!$sent['result']) {
+                watchdog('ca', 'Attempt to e-mail @email concerning order @order_id failed.', array('@email' => $email, '@order_id' => $order->order_id), WATCHDOG_ERROR);
+            }
+        }
+    }
+}
+
+function uc_cart_gifts_action_order_with_gifts_email_form($form_state, $settings = array()) {
+    $form = ca_build_email_form($form_state, $settings, array('global', 'uc_file'));
+    $form['addresses'] = null;
+    return $form;
+}
+
+/**
+ * Renew an orders product files.
+ *
+ * @param $order
+ *   An Ubercart order object.
+ *
+ * This function updates access limits on all files found on all products
+ * on a given order. First, the order user is loaded, then the order's products
+ * are scanned for file product features. An order comment is saved, and the user is
+ * notified in Drupal, as well as through the email address associated with the
+ * order.
+ */
+function uc_cart_gifts_action_order_renew($order) {
+    drupal_set_message('uc_cart_gifts_action_order_renew');
+
+    // TODO debe ser un array por cada persona que va a recibir un archivo
+    $per_user_downloads = array();
+    $soloParaMi = true;
+    $hayPorDescargar = false;
+
+    // Load user.
+    //drupal_set_message('$order->uid' . $order->uid);
+
+    if (!$order->uid || !($order_user = user_load($order->uid))) {
+        return;
+    }
+
+    //drupal_set_message('count($order->products)' . count($order->products));
+    // Scan products for models matching downloads.
+    foreach ($order->products as $product) {
+        drupal_set_message('product: ' . $product->title . ' (' . $product->model . ')' . ' (' . $product->nid . ')');
+
+        $files = db_query("SELECT * FROM {uc_file_products} AS fp " .
+                "INNER JOIN {uc_product_features} AS pf ON pf.pfid = fp.pfid " .
+                "INNER JOIN {uc_files} as f ON f.fid = fp.fid " .
+                "WHERE nid = %d", $product->nid, $order_user->uid);
+
+        while ($file = db_fetch_object($files)) {
+            drupal_set_message('$file->model ' . $file->model);
+
+            // Either they match, or the file was set to any SKU.
+            if (!empty($file->model) && $file->model != $product->model) {
+                continue;
+            }
+
+            // Grab any existing privilege so we can calculate the new expiration time
+            // as an offset of the previous.
+            $file_user = _uc_file_user_get($order_user, $file->fid);
+
+            // Get the limit info from the product feature
+            $file_modification = array(
+                'download_limit' => uc_file_get_download_limit($file),
+                'address_limit' => uc_file_get_address_limit($file),
+                'expiration' => _uc_file_expiration_date(uc_file_get_time_limit($file), $file_user->expiration),
+            );
+
+            //preguntarle al $product a quienes les tengo que otorgar el derecho para el archivo en cuestion.
+            $recivers = db_query("SELECT mail FROM {uc_productos_regalos} WHERE order_id = %d and nid = %d", $order->order_id, $product->nid);
+            $losDuenos = array();
+
+            while ($reciver = db_fetch_object($recivers)) {
+                drupal_set_message('$reciver->mail ' . $reciver->mail);
+
+                $mail = $reciver->mail;
+
+                $form_state['values']['mail'] = $mail;
+                $form_state['values']['name'] = $mail;
+
+                if (!user_exist($mail)) {
+                    // Si no existe, lo registra como usuario
+                    $pass = user_password();
+                    if (isset($form_state['values']['roles'])) {
+                        // Remove unset roles.
+                        $roles = array_filter($form_state['values']['roles']);
+                    } else {
+                        $roles = array();
+                    }
+
+                    $merge_data = array('pass' => $pass, 'init' => $mail, 'roles' => $roles);
+
+                    $merge_data['status'] = variable_get('user_register', 1) == 1;
+
+                    $account = user_save('', array_merge($form_state['values'], $merge_data));
+
+                    watchdog('user', 'New user: %name (%email).', array('%name' => $name, '%email' => $mail), WATCHDOG_NOTICE, l(t('edit'), 'user/' . $account->uid . '/edit'));
+
+                    // Add plain text password into user account to generate mail tokens.
+                    $account->password = $pass;
+
+                    // No e-mail verification is required, create new user account, and login
+                    // user immediately.
+                    //_user_mail_notify('register_no_approval_required', $account);
+                    // Create new user account, no administrator approval required.
+                    $op = $notify ? 'register_admin_created' : 'register_no_approval_required_body';
+                    _user_mail_notify($op, $account);
+                    //_user_mail_notify('register_no_approval_required_gift_body', $account);
+
+                    $losDuenos[] = $account->uid;
+                } else {
+
+                    // Si si existe, solo obtiene el id por el email
+                    $user_id = user_getUid($mail);
+                    $losDuenos[] = $user_id;
+                }
+            }
+
+            // aqui abre un for para cada uno de las personas que reciben este archivo
+            foreach ($losDuenos as $elDueno) {
+                if ($elDueno != $order->uid) {
+                    $soloParaMi = False;
+                }
+
+                //echo '$elDueno: >'.$elDueno.'|';
+                $hayPorDescargar = true;
+
+                $account = user_load($elDueno); //array('uid' => $elDueno));
+                // Add file_user(s) for this file/directory. (No overwrite)
+                $new_files = uc_file_user_renew($file->fid, $account, $file->pfid, $file_modification, FALSE);
+
+                if (!isset($per_user_downloads[$elDueno])) {
+                    $per_user_downloads[$elDueno] = array();
+                }
+
+                // Save for notification.
+                // hace el merge con el array del usuario que recibe los archivos
+                $per_user_downloads[$elDueno] = array_merge($per_user_downloads[$elDueno], $new_files);
+
+                // Note on the order where the user has gained download permission.
+                if (is_dir(uc_file_qualify_file($file->filename))) {
+                    $comment = t('%user can now download files in the directory %dir.', array('%dir' => $file->filename, '%user' => $account->name));
+                } else {
+                    $comment = t('%user can now download the file %file.', array('%file' => basename($file->filename), '%user' => $account->name));
+                }
+                uc_order_comment_save($order->order_id, $elDueno, $comment);
+
+                // Cierra el for de las personas que lo van a recibir
+            }
+        }
+    }
+
+    // Notify the user of their download(s).
+    if ($hayPorDescargar) {
+        if ($soloParaMi) {
+            //drupal_set_message('solo para mi'); // 'uc_cart_gifts_notify_grant';
+            ca_pull_trigger('uc_file_notify_grant', $order, $per_user_downloads[$order->uid]);
+        } else {
+            //drupal_set_message('para otros'); //echo 'uc_cart_gifts_notify_gifts_grant';
+            ca_pull_trigger('uc_cart_gifts_notify_gifts_grant', $order, $per_user_downloads);
+        }
+    } else {
+        //drupal_set_message('no $hayPorDescargar'); //echo 'uc_cart_gifts_notify_gifts_grant';
+    }
+}
+
+/**
+ * Determine if a user exist.
+ *
+ * @param $mail
+ *   user email
+ *
+ * This function return if a user exist by the mail.
+ *
+ */
+function user_exist($mail) {
+    $results = db_query("SELECT uid FROM {users} WHERE mail = '" . $mail . "'");
+    $result = db_fetch_object($results);
+    if ($result->uid > 0)
+        return true;
+    else
+        return false;
+}
+
+/**
+ * Get user email.
+ *
+ * @param $mail
+ *   email to consult
+ *
+ * This function return the email from a user id introduced
+ *
+ */
+function user_getEmail_byUid($uid) {
+    $results = db_query("SELECT mail FROM {users} WHERE mail = '" . $uid . "'");
+    $result = db_fetch_object($results);
+    return $result->mail;
+}
+
+/**
+ * Get user id.
+ *
+ * @param $mail
+ *   email to consult
+ *
+ * This function return the uid from a email introduced
+ *
+ */
+function user_getUid($mail) {
+    $results = db_query("SELECT uid FROM {users} WHERE mail = '" . $mail . "'");
+    $result = db_fetch_object($results);
+    return $result->uid;
+}

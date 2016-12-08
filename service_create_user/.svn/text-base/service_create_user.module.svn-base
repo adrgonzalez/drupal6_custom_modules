@@ -1,0 +1,123 @@
+<?php
+
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+function service_create_user_service() {
+    return array(
+// user.getlist
+        array(
+            '#method' => 'create_user_service.create_user',
+            '#callback' => 'create_user',
+            '#access callback' => 'user_service_create_user_access',
+            //'#file' => array('file' => 'inc', 'module' => 'user_service'),
+            '#args' => array(
+                array(
+                    '#name' => 'uid',
+                    '#type' => 'int',
+                    '#description' => t('User ID.'),
+                ),
+            ),
+            '#return' => 'struct',
+            '#help' => t('open all user details.')
+        ),
+        array(
+            '#method' => 'create_user_service.comprar_paquete',
+            '#callback' => 'comprar_paquete',
+            '#access callback' => 'user_service_create_user_access',
+            //'#file' => array('file' => 'inc', 'module' => 'user_service'),
+            '#args' => array(
+                array(
+                    '#name' => 'uid',
+                    '#type' => 'int',
+                    '#description' => t('User ID.'),
+                ),
+                array(
+                    '#name' => 'pid',
+                    '#type' => 'int',
+                    '#description' => t('Package ID.'),
+                ),
+            ),
+            '#return' => 'struct',
+            '#help' => t('open all user details.')
+        ),
+    );
+}
+
+
+function create_user($uid) {
+    // Get an array of roles
+    $roles = user_roles();
+
+// Basic account information
+    $user = array(
+        'name' => 'Some User',
+        'pass' => 'some_password',
+        'mail' => 'user@example.com',
+        'status' => 1,
+        'init' => 'user@example.com',
+        'roles' => array(array_search('some_role', $roles) => 1),
+    );
+
+// See if the user exists by calling Drupal's user_load()
+    $existing_user = user_load(array('name' => $user['name']));
+
+    if (!$existing_user->uid) {
+
+        // Save the user
+        $user = user_save(NULL, $user);
+    }
+    //module_load_include('inc', 'uc_file', 'uc_file.pages');
+    $user = user_load($uid);
+    $query = "SELECT points FROM userpoints where uid = $uid";
+    $results = db_query($query);
+    $result = db_fetch_object($results);
+    $list = array();
+    $list[] = array('name' => $user->name, 'points' => $result->points);
+    //drupal_set_message("points: $result->points, uid: $uid");
+    //echo "points: $result->points, uid: $uid";
+    return $list;
+}
+
+/* * **************************************************************************
+ * get user's list downloads.
+ *
+ * @param $uid
+ *   UID of the user.
+ *
+ * @param $pid
+ *   Package id.
+ *
+ * @return
+ *   A user's list.
+ *
+ * @see user_load()
+ */
+
+function create_user_service_comprar_paquete($uid, $pid) {
+    //module_load_include('inc', 'uc_file', 'uc_file.pages');
+    $user = user_load($uid);
+    $query = "SELECT points FROM userpoints where uid = $uid";
+    $results = db_query($query);
+    $result = db_fetch_object($results);
+    $list = array();
+    $list[] = array('name' => $user->name, 'points' => $result->points);
+    //drupal_set_message("points: $result->points, uid: $uid");
+    // "points: $result->points, uid: $uid";
+    return $list;
+}
+
+/**
+ * Check if the user is allowed to get the user data.
+ *
+ * @param $uid
+ *   Number. The user ID.
+ */
+function user_service_create_user_access($uid) {
+    global $user;
+    return user_access('get any user data');
+    //return (($user->uid == $uid && user_access('get own user data')) || ($user->uid != $uid && user_access('get any user data')));
+//return true;
+}

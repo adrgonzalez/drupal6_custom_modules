@@ -1,0 +1,484 @@
+<?php
+
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+function create_node_ftp_cron() {
+    uc_file_refresh();
+}
+
+/* function hook_cron() {
+  // Short-running operation example, not using a queue:
+  // Delete all expired records since the last cron run.
+  $expires = variable_get('mymodule_cron_last_run', REQUEST_TIME);
+  db_delete('mymodule_table')
+  ->condition('expires', $expires, '>=')
+  ->execute();
+  variable_set('mymodule_cron_last_run', REQUEST_TIME);
+
+  // Long-running operation example, leveraging a queue:
+  // Fetch feeds from other sites.
+  $result = db_query('SELECT * FROM {aggregator_feed} WHERE checked + refresh < :time AND refresh != :never', array(
+  ':time' => REQUEST_TIME,
+  ':never' => AGGREGATOR_CLEAR_NEVER,
+  ));
+  $queue = DrupalQueue::get('aggregator_feeds');
+  foreach ($result as $feed) {
+  $queue->createItem($feed);
+  }
+  }
+ */
+
+function create_node_ftp_file_action($op, $args) {
+    if ($op == 'insert') {
+        $file_obj = $args['file_object'];
+        create_node($file_obj->filename);
+    }
+}
+
+function create_node_ftp_form_alter(&$form, &$form_state, $form_id) {
+    //echo "form_id: $form_id";
+    //$algo = variable_get('uc_file_base_dir', NULL);
+    //drupal_set_message("$algo form_id: $form_id");
+}
+
+function create_node($rutaArchivo) {
+    //drupal_set_message("rutaArchivo: $rutaArchivo");
+    $base_dir1 = variable_get('uc_file_base_dir', NULL);
+    $i = strlen($rutaArchivo) - 1;
+    $dir = substr($rutaArchivo, $i - 1, 1);
+
+    global $filesystem_root;
+
+    $file_absolute = $base_dir1 . '/' . $rutaArchivo;
+
+    $dir_absolute = $filesystem_root . '/' . $file_absolute;
+
+    /* drupal_set_message("dir_absolute: $dir_absolute");
+      drupal_set_message("file_absolute: $file_absolute");
+      drupal_set_message("rutaArchivo: $rutaArchivo"); */
+
+    if (is_file($dir_absolute)) {
+        if (file_exists($dir_absolute)) {
+            $ruta_partes = split('/', $rutaArchivo);
+            //if ($ruta_partes[0] == 'ftpdir') {
+            $proveedor = $ruta_partes[0];
+            $proveedor_search = $ruta_partes[0]; //. '/' . $ruta_partes[1];
+
+            $file = $ruta_partes[count($ruta_partes) - 1];
+            $lenght = strlen($rutaArchivo) - strlen($file);
+            $file_path = substr($rutaArchivo, 0, $lenght);
+
+            $formato_partes = split('[.]', $file);
+            $ultimo = count($formato_partes) - 1;
+            $formato = strtolower($formato_partes[$ultimo]);
+
+            $name_product = str_replace($formato, '', $file);   //$formato_partes[0];
+
+            $user_id = search_provider($proveedor_search);
+            //drupal_set_message("user_id: $user_id, proveedor_search: $proveedor_search");
+
+            $node_type = '';
+
+            switch ($formato) {
+                case 'mp3':
+                case 'wma':
+                case 'aac':
+                    $node_type = 'audio';
+                    $aid = 4;
+                    $format_name = 'Audio Format';
+                    break;
+                case 'pdf':
+                case 'epub':
+                case 'txt':
+                case 'doc':
+                case 'ppt':
+                case 'docx':
+                case 'pptx':
+                    $node_type = 'ebook';
+                    $aid = 5;
+                    $format_name = 'Ebook Format';
+                    break;
+                case 'wmv':
+                case 'mov':
+                case 'avi':
+                case '3gp':
+                case 'mp4':
+                case 'mpg':
+                    $node_type = 'video';
+                    $aid = 6;
+                    $format_name = 'Video Format';
+                    break;
+                case 'jpeg':
+                case 'jpg':
+                case 'png':
+                case 'gif':
+                case 'tiff':
+                case 'tif':
+                    $node_type = 'imagen';
+                    $aid = 7;
+                    $format_name = 'Image Format';
+                    break;
+                default:
+                    $node_type = 'product';
+                    $aid = 8;
+                    $format_name = 'Product Format';
+                    break;
+            }
+
+            //$user_id = 4;
+            $nid_autor = 0;
+            $user_provider = user_load($user_id);
+            $node_autor = get_autor($user_id);
+            $nid_autor = $node_autor->nid;
+
+            if ($nid_autor <= 0) {
+                $nid_autor = create_autor($user_id, $user_provider->name);
+                //drupal_set_message("Autor $user_provider->name creado");
+            }
+
+            if ($nid_autor > 0) {
+                //echo "<br />nid_autor: $nid_autor<br /><br />";
+                $node = new stdClass();
+                $node->nid = NULL;
+                $node->type = $node_type;
+                $node->uid = $user_id;
+                $node->title = $name_product;
+                $node->title_format = $name_product;
+                $node->sell_price = 0;
+                $node->shippable = 1;
+                $node->weight = 0;
+                $node->weight_units = 0;
+                $node->length_units = 0;
+                $node->length = 0;
+                $node->width = 0;
+                $node->height = 0;
+                $node->pkg_qty = 1;
+                $node->default_qty = 1;
+                $node->ordering = 0;
+                $node->taxonomy = array();
+                $node->menu = array();
+                $node->field_autor = array(0 => array('nid' => $nid_autor));
+                $node->active = 0;
+                $node->status = 0;
+                $node->shippable = 0;
+                $node->body = $rutaArchivo;
+
+                node_save($node);
+                $nid = $node->nid;
+
+                $attributes = new stdClass();
+                $attributes->aid = $aid; //formato
+                $attributes->name = $format_name; //formato name
+                $attributes->default_label = $format_name; //formato
+                $attributes->default_ordering = 0; //formato
+                $attributes->default_required = 1; //formato
+                $attributes->default_display = 1; //formato
+                $attributes->description = 'Formato de descarga'; //formato
+                $attributes->label = 'Formato de ' . $node_type; //formato
+                $attributes->required = 1; //formato
+                $attributes->ordering = -10; //formato
+                $attributes->display = 1; //formato
+                $attributes->add_attributes = $aid;
+
+                /*
+                 * se crea un formato si este no existe 
+                 * se tomo de uc_attribute_option_form_submit
+                 * de uc_attribute.admin.inc
+                 */
+                $oid_new = buscar_formato($formato);
+                if (!$oid_new) {
+                    db_query("INSERT INTO {uc_attribute_options} (aid, name, cost, price, weight, ordering) VALUES (%d, '%s', %f, %f, %f, %d)", $aid, $formato, 0.00, 0.00, 0.00, 0);
+                    //drupal_set_message(t('Created new option %option.', array('%option' => $form_state['values']['name'])));
+                    watchdog('uc_attribute', 'Created a pata new option %option.', array('%option' => $formato), WATCHDOG_NOTICE, 'admin/store/attributes/' . $aid . '/options/add');
+                    $oid_new = buscar_formato($formato);
+
+                    //$form_state['redirect'] = 'admin/store/attributes/' . $form_state['values']['aid'] . '/options/add';
+                }
+                /* else {
+                  db_query("UPDATE {uc_attribute_options} SET name = '%s', cost = %f, price = %f, weight = %f, ordering = %d WHERE aid = %d AND oid = %d", $form_state['values']['name'], $form_state['values']['cost'], $form_state['values']['price'], $form_state['values']['weight'], $form_state['values']['ordering'], $form_state['values']['aid'], $form_state['values']['oid']);
+                  drupal_set_message(t('Updated option %option.', array('%option' => $form_state['values']['name'])));
+                  watchdog('uc_attribute', 'Updated option %option.', array('%option' => $form_state['values']['name']), WATCHDOG_NOTICE, 'admin/store/attributes/' . $form_state['values']['aid'] . '/options/' . $form_state['values']['oid']);
+                  $form_state['redirect'] = 'admin/store/attributes/' . $form_state['values']['aid'] . '/options';
+                  } */
+                $oid = $oid_new;
+
+                //esto por la cantidad de veces que se seleccione un formato
+                $results = db_query("SELECT * FROM uc_attribute_options where aid = $aid and name= '$formato'");
+                $attributes->options = array();
+                while ($result = db_fetch_object($results)) {
+                    if ($result->oid > 0) {
+                        $oid = $result->oid;
+                    }
+                    $options = new stdClass();
+                    $options->nid = $nid;
+                    $options->oid = $oid;
+                    $options->cost = 0;
+                    $options->price = 0;
+                    $options->weight = 0;
+                    $options->ordering = 0;
+                    $options->name = $result->name;
+                    $options->aid = $aid;
+                    $attributes->options[$oid] = $options;
+                }
+
+                $node->attributes = $attributes;
+
+                $comb_array = array();
+
+                $s1 = 1;
+                if ($oid > 9) {
+                    $s1 = 2;
+                }
+                //a:1:{i:4;s:1:"2";}
+                //a:1: i:8;s:1:"2";
+                //"concat('a:1:',char(123),'i:4;s:1:',char(34),'2',char(34),';',char(125))";
+                //$combination = 'a:1:char(123)i:' . $aid . ';s:' . $s1 . ':"' . $oid . '";char(125)';
+                $combination = "concat('a:1:',char(123),'i:$aid;s:$s1:',char(34),'$oid',char(34),';',char(125))";
+
+                db_query("INSERT INTO {uc_product_adjustments} (nid, combination, model) values ($nid, $combination, '$nid-$formato')");
+
+                db_query("INSERT INTO {uc_product_attributes} (nid, aid, label, ordering, default_option, required, display) SELECT %d, aid, label, ordering, %d, required, display FROM {uc_attributes} WHERE aid = %d", $node->nid, $oid, $aid);
+                foreach ($attributes->options as $option) {
+                    db_query("INSERT INTO {uc_product_options} (nid, oid, cost, price, weight, ordering) VALUES (%d, %d, %f, %f, %f, %d)", $node->nid, $option->oid, $option->cost, $option->price, $option->weight, $option->ordering);
+                }
+
+                $date = getdate();
+                $date_now = $date[year] . '-' . $date[mon] . '-' . $date[mday] . '-' . $date[hours] . '-' . $date[minutes] . '-' . $date[seconds];
+                db_query("INSERT INTO {product_providers}(id_provider, nid, date) values(%d, %d, '$date_now')", get_provider_id($user_id), $nid);
+
+                $node->model = $nid; // . "-$formato";
+
+                node_save($node);
+
+                // Build product feature descriptions.
+                $description = t('<strong>SKU:</strong> !sku<br />', array('!sku' => $node->model));
+                $description .= t('<strong>Path:</strong> !Path<br />', array('!Path' => $rutaArchivo));
+                /* if (is_dir(variable_get('uc_file_base_dir', NULL) . "/" . $file_product['filename'])) {
+                  $description .= t('<strong>Directory:</strong> !dir<br />', array('!dir' => $name_product));
+                  } else {
+                  $description .= t('<strong>File:</strong> !file<br />', array('!file' => basename($name_product)));
+                  ;
+                  }
+                  $description .= t('<strong>Shippable:</strong> No'); */
+
+                $file_dbobject = uc_file_get_by_name($rutaArchivo);
+
+                $data = array(
+                    'pfid' => $file_dbobject->pfid,
+                    'nid' => $nid,
+                    'fid' => 'file', //$file_dbobject->fid,
+                    'description' => $description,
+                );
+
+                uc_product_feature_save($data);
+
+                $pfid = db_last_insert_id('uc_product_features', 'pfid');
+
+                //$key = NULL;
+                //$key = 'fpid';
+                //drupal_write_record('uc_file_products', $file_product);
+                // Get the file size
+
+                $file = $base_dir1 . '/' . $rutaArchivo;
+                $filesize = filesize($file); //$details['size'];
+                //drupal_set_message("file: $file, filesize: $filesize");
+                // Get the path to your Drupal site's files directory 
+                $dest = file_directory_path();
+
+                $name = basename($file);
+                // Build the file object
+                $file_obj = new stdClass();
+                $file_obj->filename = $name;
+                $file_obj->filepath = $file;
+                $file_obj->filemime = file_get_mimetype($name);
+                $file_obj->filesize = $filesize;
+                $file_obj->filesource = $name;
+                // You can change this to the UID you want
+                $file_obj->uid = 1;
+                $file_obj->status = FILE_STATUS_TEMPORARY;
+                $file_obj->timestamp = time();
+                $file_obj->list = 1;
+                $file_obj->new = true;
+                $file_obj->fid = $file_dbobject->fid;
+                $file_obj->model = $nid . "-$formato"; //$node->model;
+                $file_obj->pfid = $pfid;
+                $file_obj->description = $description;
+
+                // Save file to files table
+                drupal_write_record('uc_file_products', $file_obj);
+
+                // change file status to permanent
+                file_set_status($file_obj, 1);
+
+                // Attach the file object to your node
+                $node->files[$file_obj->fid] = $file_obj;
+
+                node_save($node);
+            }
+            //print_r($node);
+        }
+    }
+}
+
+function buscar_formato($formato) {
+    $res = 0;
+    $query = "SELECT oid FROM uc_attribute_options where name like '%$formato%'"; //like('%ftpdir/Sony_Music%')";
+    $results = db_query($query);
+    $result = db_fetch_object($results);
+    if ($result) {
+        $res = $result->oid;
+    }
+    return $res;
+}
+
+function get_oid($aid) {
+    $query = "SELECT * FROM uc_attribute_options where aid = '$aid'"; //like('%Sony_Music%')";
+    $results = db_query($query);
+    $result = db_fetch_object($results);
+    return $result;
+}
+
+function search_provider($path) {
+    //drupal_set_message("path: $path");
+    $query = "SELECT uid FROM uc_product_providers where ftp_path = '$path'"; //like('%Sony_Music%')";
+    $results = db_query($query);
+    $result = db_fetch_object($results);
+    return $result->uid;
+}
+
+function get_autor($uid) {
+    if ($uid) {
+        $node = db_fetch_object(db_query("SELECT * FROM node where type='autor' and uid = $uid"));
+    }
+    return $node;
+}
+
+function get_provider_id($uid) {
+    if ($uid) {
+        $query = "SELECT id_provider FROM uc_product_providers where uid = $uid";
+        $results = db_query($query);
+        $result = db_fetch_object($results);
+    }
+    return $result->id_provider;
+}
+
+function create_autor($uid, $name) {
+    if ($uid) {
+        $node_autor = new stdClass();
+        $node_autor->nid = NULL;
+        $node_autor->type = 'autor';
+        $node_autor->uid = $uid;
+        $node_autor->title = $name;
+        $node_autor->active = 0;
+        $node_autor->status = 0;
+
+        node_save($node_autor);
+
+        return $node_autor->nid;
+        //echo "<br /><br />$nid<br /><br />";
+        //print_r($node);
+    }
+}
+
+/**
+ * Implementation of hook_views_data()
+ */
+function create_node_ftp_views_data() {
+    $data = array();
+
+    /* ----- uc_file_products ----- */
+    $data['uc_file_products']['table']['group'] = t('Uc Files');
+    $data['uc_file_products']['table']['join'] = array(
+        'node' => array(
+            'left_table' => 'uc_product_features',
+            'left_field' => 'pfid',
+            'field' => 'pfid',
+        ),
+        'uc_product_features' => array(
+            'left_field' => 'pfid',
+            'field' => 'pfid',
+        ),
+        'uc_files' => array(
+            'left_field' => 'fid',
+            'field' => 'fid',
+        ),
+    );
+
+    $data['uc_file_products']['pfid'] = array(
+        'title' => t('Product Feature Id'),
+        'help' => t('The product features id on uc_file_products.'),
+        'field' => array(
+            'handler' => 'views_handler_field_numeric',
+        ),
+    );
+    $data['uc_file_products']['fid'] = array(
+        'title' => t('File Id'),
+        'help' => t('The file id uc_file_products.'),
+        'field' => array(
+            'handler' => 'views_handler_field_numeric',
+        ),
+    );
+
+    /* ------ uc_product_features ----- */
+    $data['uc_product_features']['table']['group'] = t('Uc Files');
+    $data['uc_product_features']['table']['join'] = array(
+        'node' => array(
+            'left_field' => 'nid',
+            'field' => 'nid',
+        ),
+        'uc_file_products' => array(
+            'left_field' => 'pfid',
+            'field' => 'pfid',
+        ),
+    );
+
+    $data['uc_product_features']['pfid'] = array(
+        'title' => t('Product Feature Id'),
+        'help' => t('The product features id.'),
+        'field' => array(
+            'handler' => 'views_handler_field_numeric',
+        ),
+    );
+    $data['uc_product_features']['nid'] = array(
+        'title' => t('Node Id'),
+        'help' => t('The node id on uc_product_features.'),
+        'field' => array(
+            'handler' => 'views_handler_field_numeric',
+        ),
+    );
+
+    /* ----- uc_files ----- */
+    $data['uc_files']['table']['group'] = t('Uc Files');
+    $data['uc_files']['table']['join'] = array(
+        'node' => array(
+            'left_field' => 'fid',
+            'left_table' => 'uc_file_products',
+            'field' => 'fid',
+        ),
+        'uc_file_products' => array(
+            'left_field' => 'fid',
+            'field' => 'fid',
+        ),
+        'uc_product_features' => array(
+            'left_field' => 'pfid',
+            'left_table' => 'uc_file_products',
+            'field' => 'pfid',
+        ),
+    );
+
+    $data['uc_files']['fid'] = array(
+        'title' => t('File Id'),
+        'help' => t('The file id.'),
+        'field' => array(
+            'handler' => 'views_handler_field_numeric',
+        ),
+        'filter' => array(
+            'handler' => 'views_handler_filter_numeric',
+        ),
+    );
+
+    return $data;
+}
